@@ -24,7 +24,9 @@ veya M3U aboneliğini ekler.
 - Canlı TV yüklendikten sonra Film ve Dizi listeleri arka planda hazırlanır.
 - Logolar/afişler bellek + 200 MB disk önbelleğinde, RGB565 ile tutulur.
 - Arama arka planda ve 300 ms gecikmeli çalışır; kategori geçişleri önceden gruplanmış listeden yapılır.
-- Oynatıcı 1 sn tamponla başlar (varsayılan 2,5 sn), kanal geçişi daha hızlıdır.
+- Canlı yayın 0,5 sn, film/dizi 1 sn tamponla başlar (varsayılan 2,5 sn).
+- Hızlı kanal tarama: tuşa arka arkaya basınca sadece kanal adı değişir, yayın durulan kanalda açılır.
+- Kumandadaki rakam tuşlarıyla kanal numarası girilebilir.
 
 ## Kurulum
 `HakoPlayer-1.0.0.apk` dosyasını cihaza atıp açın ("Bilinmeyen kaynaklar" izni gerekir).
