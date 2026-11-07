@@ -190,6 +190,8 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun showOverlay(autoHide: Boolean) {
         val item = current ?: return
+        // Kanal listesi açıkken üst bilgi çubuğu listenin üstüne binmesin
+        if (panelVisible) return
         val idx = Session.queueIndex + 1
         findViewById<TextView>(R.id.ovTitle).text = if (isLive) "$idx  ${item.name}" else item.name
         findViewById<ImageView>(R.id.ovLogo).load(item.logo)
@@ -228,22 +230,27 @@ class PlayerActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, panelBack)
     }
 
-    private fun showChannelPanel(move: Int) {
+    /** CH/PRG ±: kanalı doğrudan değiştirir; liste zaten açıksa imleci yeni kanala taşır */
+    private fun channelKey(dir: Int) {
+        zap(dir)
+        if (panelVisible) showChannelPanel()
+    }
+
+    /** Listeyi açar ya da açıksa oynayan kanalı vurgulayıp imleci ona taşır */
+    private fun showChannelPanel() {
         if (!isLive || Session.queue.size <= 1) return
         if (!panelVisible) {
             panelAdapter.items = Session.queue
-            panelAdapter.activeKey = current?.key
             findViewById<TextView>(R.id.tvPanelTitle).text = "Kanallar (${Session.queue.size})"
             overlay.visibility = View.GONE
+            handler.removeCallbacks(hideOverlay)
             view.hideController()
             view.useController = false
             channelPanel.visibility = View.VISIBLE
             panelBack.isEnabled = true
-            focusPanelRow(Session.queueIndex)
-        } else {
-            val focused = rvChannels.focusedChild?.let { rvChannels.getChildAdapterPosition(it) } ?: Session.queueIndex
-            focusPanelRow((focused + move).coerceIn(0, Session.queue.size - 1))
         }
+        panelAdapter.activeKey = current?.key
+        focusPanelRow(Session.queueIndex)
         bumpPanelTimer()
     }
 
@@ -287,13 +294,13 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // Kanal listesi açıkken: CH± imleci gezdirir, yön tuşları ve OK listede çalışır
+        // Kanal listesi açıkken: CH± kanalı değiştirir, yukarı/aşağı yalnızca listede gezer, OK seçileni açar
         if (panelVisible) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 bumpPanelTimer()
                 when (event.keyCode) {
-                    KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { showChannelPanel(-1); return true }
-                    KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { showChannelPanel(+1); return true }
+                    KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { channelKey(-1); return true }
+                    KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { channelKey(+1); return true }
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> return true
                     KeyEvent.KEYCODE_MENU -> { hideChannelPanel(); return true }
                 }
@@ -303,21 +310,19 @@ class PlayerActivity : AppCompatActivity() {
         if (event.action == KeyEvent.ACTION_DOWN) {
             val controllerHidden = !view.isControllerFullyVisible
             when (event.keyCode) {
-                // Canlı yayında CH+/CH-: şeffaf kanal listesini aç (diğerlerinde doğrudan geç)
-                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> {
-                    if (isLive && Session.queue.size > 1) showChannelPanel(0) else zap(-1); return true
-                }
-                KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> {
-                    if (isLive && Session.queue.size > 1) showChannelPanel(0) else zap(+1); return true
-                }
+                // CH/PRG ±: liste açılmadan kanalı değiştir
+                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { channelKey(-1); return true }
+                KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { channelKey(+1); return true }
                 KeyEvent.KEYCODE_DPAD_UP -> if (isLive && controllerHidden) { zap(-1); return true }
                 KeyEvent.KEYCODE_DPAD_DOWN -> if (isLive && controllerHidden) { zap(+1); return true }
                 KeyEvent.KEYCODE_MENU -> { cycleResize(); return true }
                 in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> if (isLive) { onDigit(event.keyCode - KeyEvent.KEYCODE_0); return true }
                 KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_GUIDE -> { showOverlay(true); return true }
-                // Canlı yayında OK: kanal listesine (önizleme ekranına) dön
+                // Canlı yayında OK: şeffaf kanal listesini aç (tek kanal varsa bilgi çubuğunu göster).
+                // Önizleme ekranına dönüş Geri tuşuyla.
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> if (isLive && controllerHidden) {
-                    finish(); return true
+                    if (Session.queue.size > 1) showChannelPanel() else showOverlay(true)
+                    return true
                 }
             }
         }
