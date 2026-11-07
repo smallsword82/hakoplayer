@@ -252,6 +252,7 @@ class HomeActivity : AppCompatActivity() {
         previewEpgJob?.cancel()
         previewEpgJob = lifecycleScope.launch {
             val list = try { src.shortEpg(item) } catch (_: Exception) { emptyList() }
+            if (list.isEmpty()) { ep.text = "Program bilgisi yok"; return@launch }
             val f = Settings.timeFormat()
             ep.text = list.take(2).mapIndexed { i, e ->
                 "${if (i == 0) "Şimdi" else "Sonra"}   ${f.format(Date(e.start))} - ${f.format(Date(e.end))}\n${e.title}"
