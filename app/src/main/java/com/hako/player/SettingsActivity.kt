@@ -90,7 +90,9 @@ class SettingsActivity : AppCompatActivity() {
                     }.show()
             }
         }
-        row("PIN değiştir", { "Varsayılan PIN: 0000" }) { requirePin { changePin() } }
+        row("PIN değiştir", { if (Settings.pinIsDefault) "⚠ Varsayılan PIN (0000) — değiştirin" else "Özel PIN ayarlı" }) {
+            requirePin { changePin() }
+        }
         row("Kilitleri şimdi kapat", { if (Parental.unlocked) "Kilitler şu an açık" else "Kilitli" }) {
             Parental.unlocked = false; refresh()
             Toast.makeText(this, "Kilitli içerik tekrar gizlendi", Toast.LENGTH_SHORT).show()
@@ -157,7 +159,8 @@ class SettingsActivity : AppCompatActivity() {
                 when {
                     p.length != 4 -> toast("PIN 4 haneli olmalı")
                     p != c.text.toString() -> toast("PIN'ler eşleşmiyor")
-                    else -> { Settings.pin = p; toast("PIN değiştirildi") }
+                    p == Settings.DEFAULT_PIN -> toast("Varsayılan PIN (0000) kullanılamaz")
+                    else -> { Settings.setPin(p); toast("PIN değiştirildi"); refresh() }
                 }
             }
             .setNegativeButton("Vazgeç", null).show()

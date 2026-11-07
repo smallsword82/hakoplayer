@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- IPTV sunucularının çoğu düz HTTP kullanır -->
+    <!-- IPTV sunucularının çoğu düz HTTP kullanır; HTTPS'te yalnızca sistem sertifikalarına güvenilir
+         (kullanıcının sonradan yüklediği sertifikalarla trafik dinlenemez) -->
     <base-config cleartextTrafficPermitted="true">
-        <trust-anchors><certificates src="system" /><certificates src="user" /></trust-anchors>
+        <trust-anchors><certificates src="system" /></trust-anchors>
     </base-config>
 </network-security-config>

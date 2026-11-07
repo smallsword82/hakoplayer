@@ -38,6 +38,32 @@ veya M3U aboneliğini ekler.
 - Hızlı kanal tarama: tuşa arka arkaya basınca sadece kanal adı değişir, yayın durulan kanalda açılır.
 - Kumandadaki rakam tuşlarıyla kanal numarası girilebilir.
 
+## Güvenlik
+- Kayıtlı listeler (sunucu, kullanıcı adı, şifre, M3U adresi), favoriler ve son izlenenler Android Keystore'daki
+  AES-256-GCM anahtarıyla şifreli saklanır (Android 6.0+). Eski sürümden kalan kayıtlar ilk açılışta şifrelenir.
+- Uygulama verisi yedeklenmez (`allowBackup=false`, bulut/cihaz aktarımı kapalı); adb backup ile şifreler alınamaz.
+- Ebeveyn PIN'i tuzlu PBKDF2 özeti olarak saklanır; 5 hatalı denemeden sonra 30 sn'den başlayıp 15 dk'ya kadar artan bekleme.
+- Yerel QR sunucusu: 5 yanlış koddan sonra 60 sn bekleme, 10 yanlışta kod yenilenir; en fazla 4 eşzamanlı bağlantı;
+  istek boyutu sınırlı; CSP / X-Frame-Options başlıkları. Sunucu yalnızca liste ekleme ekranı açıkken çalışır.
+- Yalnızca http/https adresleri kabul edilir (file://, content:// reddedilir); indirilen liste en fazla 300 MB.
+- HTTPS'te yalnızca sistem sertifikalarına güvenilir; release'te oynatıcı ve uygulama kayıtları (logcat) kapalı.
+- **Bilinen sınırlar:** IPTV sunucularının çoğu düz HTTP kullandığı için yayın ve giriş trafiği ağda şifresizdir.
+  QR ile telefondan gönderilen bilgiler de yerel ağda HTTP ile gider; ortak Wi-Fi'da kullanmayın.
+
+## Release imzası
+Yayınlamadan önce kendi anahtarınızı oluşturun ve **güvenli bir yerde yedekleyin** (kaybederseniz güncelleme yayınlayamazsınız):
+```
+keytool -genkeypair -v -keystore hako-release.keystore -alias hako -keyalg RSA -keysize 4096 -validity 10000
+```
+Proje köküne `keystore.properties` (git'e eklenmez):
+```
+storeFile=hako-release.keystore
+storePassword=...
+keyAlias=hako
+keyPassword=...
+```
+Dosya yoksa release APK debug anahtarıyla imzalanır (yalnızca test için).
+
 ## Kurulum
 `HakoPlayer-1.0.0.apk` dosyasını cihaza atıp açın ("Bilinmeyen kaynaklar" izni gerekir).
 TV box için: APK'yı USB belleğe atın veya "Downloader" uygulamasıyla indirin.

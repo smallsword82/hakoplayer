@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+import java.util.Properties
+
+// Release imzası: proje kökünde keystore.properties varsa onu kullanır (git'e eklenmez)
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.hako.player"
     compileSdk = 35
@@ -11,8 +19,17 @@ android {
         applicationId = "com.hako.player"
         minSdk = 21
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.0.1"
+        versionCode = 7
+        versionName = "2.1.0"
+    }
+
+    signingConfigs {
+        if (keystoreProps.getProperty("storeFile") != null) create("release") {
+            storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+            storePassword = keystoreProps.getProperty("storePassword")
+            keyAlias = keystoreProps.getProperty("keyAlias")
+            keyPassword = keystoreProps.getProperty("keyPassword")
+        }
     }
 
     buildTypes {
@@ -21,8 +38,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Not: Kendi imza anahtarınızla imzalayın (README'ye bakın). Şimdilik debug anahtarı.
-            signingConfig = signingConfigs.getByName("debug")
+            // keystore.properties yoksa (geliştirme) debug anahtarıyla imzalanır
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

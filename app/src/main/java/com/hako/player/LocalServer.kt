@@ -20,21 +20,54 @@ import kotlin.concurrent.thread
  * Yetkisiz eklemeyi önlemek için ekranda gösterilen 4 haneli kod gerekir.
  */
 class LocalServer(
-    val code: String,
+    initialCode: String,
     /** Arka plan iş parçacığında çağrılır. Dönüş: (başarılı mı, mesaj) */
     private val onSubmit: (Map<String, String>) -> Pair<Boolean, String>,
 ) {
     private var ss: ServerSocket? = null
     val port: Int get() = ss?.localPort ?: 0
 
+    /** Ekrandaki kod; çok fazla hatalı denemede yenilenir */
+    @Volatile var code: String = initialCode
+        private set
+    /** Kod yenilendiğinde ekranı güncellemek için (sunucu iş parçacığında çağrılır) */
+    var onCodeChanged: ((String) -> Unit)? = null
+
+    // Kaba kuvvet koruması: 5 hatadan sonra 60 sn bekleme, 10 hatada kod yenilenir
+    private var failures = 0
+    private var lockedUntil = 0L
+    /** Aynı anda en fazla 4 bağlantı işlenir (bağlantı seli ile uygulamayı kilitlemeyi önler) */
+    private var pool: java.util.concurrent.ThreadPoolExecutor? = null
+
+    @Synchronized private fun checkCode(k: String?): String? {
+        val now = System.currentTimeMillis()
+        if (now < lockedUntil) return "Çok fazla hatalı deneme. ${(lockedUntil - now + 999) / 1000} sn sonra tekrar deneyin."
+        if (k?.trim() == code) { failures = 0; return null }
+        failures++
+        if (failures >= 10) {
+            code = (1000..9999).random().toString()
+            failures = 0
+            lockedUntil = 0
+            onCodeChanged?.invoke(code)
+            return "Çok fazla hatalı deneme. TV ekranındaki kod yenilendi."
+        }
+        if (failures >= 5) lockedUntil = now + 60_000
+        return "Kod hatalı. TV ekranındaki 4 haneli kodu girin."
+    }
+
     fun start() {
         if (ss != null) return
         val s = try { ServerSocket(8686) } catch (e: Exception) { ServerSocket(0) }
         ss = s
+        val ex = java.util.concurrent.ThreadPoolExecutor(1, 4, 30, java.util.concurrent.TimeUnit.SECONDS,
+            java.util.concurrent.ArrayBlockingQueue(16), java.util.concurrent.ThreadPoolExecutor.DiscardPolicy())
+        pool = ex
         thread(isDaemon = true, name = "hako-http") {
             while (!s.isClosed) {
                 val c = try { s.accept() } catch (e: Exception) { break }
-                thread(isDaemon = true) { try { handle(c) } catch (_: Exception) { } }
+                try {
+                    ex.execute { try { handle(c) } catch (_: Exception) { } finally { try { c.close() } catch (_: Exception) { } } }
+                } catch (e: Exception) { try { c.close() } catch (_: Exception) { } }
             }
         }
     }
@@ -42,10 +75,11 @@ class LocalServer(
     fun stop() {
         try { ss?.close() } catch (_: Exception) { }
         ss = null
+        pool?.shutdownNow(); pool = null
     }
 
     private fun handle(sock: Socket): Unit = sock.use { c ->
-        c.soTimeout = 30_000
+        c.soTimeout = 10_000
         val inp = BufferedInputStream(c.getInputStream())
         val reqLine = readLine(inp) ?: return
         val parts = reqLine.split(" ")
@@ -54,12 +88,15 @@ class LocalServer(
         val path = parts[1].substringBefore('?')
         val query = parseForm(parts[1].substringAfter('?', ""))
         var len = 0
+        var headers = 0
         while (true) {
             val h = readLine(inp) ?: break
             if (h.isEmpty()) break
+            if (++headers > 64) return // aşırı başlık: reddet
             if (h.startsWith("content-length:", true)) len = h.substringAfter(':').trim().toIntOrNull() ?: 0
         }
-        val body = if (len in 1..65_536) {
+        if (len > 16_384) return // form bu kadar büyük olamaz
+        val body = if (len in 1..16_384) {
             val buf = ByteArray(len); var off = 0
             while (off < len) { val r = inp.read(buf, off, len - off); if (r < 0) break; off += r }
             String(buf, 0, off, Charsets.UTF_8)
@@ -69,7 +106,8 @@ class LocalServer(
             method == "GET" && (path == "/" || path == "/index.html") -> 200 to formPage(query["k"] ?: "")
             method == "POST" && path == "/add" -> {
                 val f = parseForm(body)
-                if (f["k"]?.trim() != code) 403 to resultPage(false, "Kod hatalı. TV ekranındaki 4 haneli kodu girin.")
+                val err = checkCode(f["k"])
+                if (err != null) 403 to resultPage(false, err)
                 else {
                     val (ok, msg) = try { onSubmit(f) } catch (e: Exception) { false to (e.message ?: "Hata") }
                     200 to resultPage(ok, msg)
@@ -79,7 +117,11 @@ class LocalServer(
         }
         val bytes = html.toByteArray(Charsets.UTF_8)
         val head = "HTTP/1.1 $status OK\r\nContent-Type: text/html; charset=utf-8\r\n" +
-            "Content-Length: ${bytes.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+            "Content-Length: ${bytes.size}\r\nCache-Control: no-store\r\nConnection: close\r\n" +
+            // Sayfa başka sitelere gömülemez, dış kaynak yükleyemez, form yalnızca bu sunucuya gönderilir
+            "X-Frame-Options: DENY\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n" +
+            "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; " +
+            "form-action 'self'; frame-ancestors 'none'\r\n\r\n"
         c.getOutputStream().run { write(head.toByteArray()); write(bytes); flush() }
     }
 

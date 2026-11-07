@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.ConnectionPool
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -26,6 +27,16 @@ object Net {
     val UA: String get() = Settings.userAgent.ifBlank { DEFAULT_UA }
     /** Liste önbelleği süresi (Ayarlar > Liste güncelleme). "Yenile" butonu önbelleği atlar. */
     val LIST_TTL: Long get() = Settings.cacheHours * 60 * 60 * 1000L
+
+    private const val MAX_LIST_BYTES = 300L * 1024 * 1024
+
+    /** 7 günden eski liste önbelleği dosyalarını siler (diskte birikmesin) */
+    fun pruneCache() {
+        val limit = System.currentTimeMillis() - 7 * 24 * 3600_000L
+        cacheDir.listFiles()?.forEach {
+            if (it.name.startsWith("list_") && (it.lastModified() < limit || it.name.endsWith(".tmp"))) it.delete()
+        }
+    }
 
     /** Tüm liste önbelleğini siler */
     fun clearListCache() {
@@ -73,7 +84,21 @@ object Net {
         client.newCall(req).execute().use { r ->
             if (!r.isSuccessful) throw IOException("Sunucu hatası: HTTP ${r.code}")
             val body = r.body ?: throw IOException("Boş yanıt")
-            tmp.outputStream().use { out -> body.byteStream().copyTo(out, 64 * 1024) }
+            val declared = body.contentLength()
+            if (declared > MAX_LIST_BYTES) throw IOException("Liste çok büyük")
+            tmp.outputStream().use { out ->
+                val buf = ByteArray(64 * 1024)
+                var total = 0L
+                body.byteStream().use { inp ->
+                    while (true) {
+                        val n = inp.read(buf); if (n < 0) break
+                        total += n
+                        // Hatalı/kötü niyetli sunucu diski dolduramasın
+                        if (total > MAX_LIST_BYTES) { tmp.delete(); throw IOException("Liste çok büyük (300 MB üstü)") }
+                        out.write(buf, 0, n)
+                    }
+                }
+            }
         }
         try {
             val result = tmp.inputStream().buffered(64 * 1024).use(parse)
@@ -83,6 +108,19 @@ object Net {
             tmp.delete(); f.delete()
             throw IOException("Liste okunamadı: ${e.message}")
         }
+    }
+}
+
+/** Kullanıcının girdiği adresleri doğrular */
+object UrlCheck {
+    private val scheme = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
+
+    /** Şema yoksa http:// ekler; http/https dışındaki (file://, content:// vb.) adresleri reddeder */
+    fun normalize(input: String): String? {
+        val t = input.trim()
+        if (t.isEmpty() || t.length > 2048 || t.any { it.isWhitespace() || it.code < 32 }) return null
+        val u = if (scheme.containsMatchIn(t)) t else "http://$t"
+        return if (u.toHttpUrlOrNull() != null) u else null
     }
 }
 

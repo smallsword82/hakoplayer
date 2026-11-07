@@ -11,6 +11,9 @@ class App : Application(), ImageLoaderFactory {
         super.onCreate()
         Net.cacheDir = cacheDir
         Settings.init(this)
+        // Oynatıcı kayıtları yayın adresini (içinde kullanıcı adı/şifre) logcat'e yazabilir: kapat
+        androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF)
+        Thread { try { Net.pruneCache() } catch (_: Exception) { } }.start()
     }
 
     /** Logolar/afişler: bellek + 200 MB disk önbelleği, RGB565 (yarı bellek), geçiş animasyonu yok */

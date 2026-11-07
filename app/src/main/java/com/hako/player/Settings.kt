@@ -12,15 +12,49 @@ import java.util.Locale
 /** Uygulama ayarları (App.onCreate içinde init edilir) */
 object Settings {
     private lateinit var sp: SharedPreferences
-    fun init(ctx: Context) { sp = ctx.getSharedPreferences("hako_settings", Context.MODE_PRIVATE) }
+    fun init(ctx: Context) {
+        sp = ctx.getSharedPreferences("hako_settings", Context.MODE_PRIVATE)
+        migratePin()
+    }
 
     private fun str(k: String, d: String) = sp.getString(k, d) ?: d
     private fun put(k: String, v: String) = sp.edit().putString(k, v).apply()
     private fun bool(k: String, d: Boolean) = sp.getBoolean(k, d)
     private fun put(k: String, v: Boolean) = sp.edit().putBoolean(k, v).apply()
 
-    /** Ebeveyn kontrolü PIN'i (varsayılan 0000) */
-    var pin: String get() = str("pin", "0000"); set(v) = put("pin", v)
+    /* ---- Ebeveyn PIN'i: tuzlu PBKDF2 özeti, deneme sınırı ---- */
+    const val DEFAULT_PIN = "0000"
+
+    /** Eski sürümlerdeki düz metin PIN'i özete çevirip siler */
+    private fun migratePin() {
+        if (sp.contains("pin_hash")) return
+        setPin(sp.getString("pin", null) ?: DEFAULT_PIN, isDefault = !sp.contains("pin"))
+        sp.edit().remove("pin").apply()
+    }
+
+    fun setPin(pin: String, isDefault: Boolean = false) {
+        val salt = PinHash.newSalt()
+        sp.edit().putString("pin_salt", salt).putString("pin_hash", PinHash.hash(pin, salt))
+            .putBoolean("pin_default", isDefault).putInt("pin_fail", 0).putLong("pin_lock_until", 0).apply()
+    }
+
+    val pinIsDefault: Boolean get() = bool("pin_default", true)
+
+    /** PIN girişi şu an kilitliyse kalan süre (ms), değilse 0 */
+    fun pinLockRemaining(): Long = (sp.getLong("pin_lock_until", 0) - System.currentTimeMillis()).coerceAtLeast(0)
+
+    /** PIN'i doğrular; hatalı denemeleri sayar ve gerekirse beklemeye alır */
+    fun verifyPin(pin: String): Boolean {
+        if (pinLockRemaining() > 0) return false
+        val ok = PinHash.matches(pin, str("pin_salt", ""), str("pin_hash", ""))
+        if (ok) sp.edit().putInt("pin_fail", 0).apply()
+        else {
+            val f = sp.getInt("pin_fail", 0) + 1
+            sp.edit().putInt("pin_fail", f)
+                .putLong("pin_lock_until", System.currentTimeMillis() + PinHash.lockoutMs(f)).apply()
+        }
+        return ok
+    }
     /** Açılışta son listeyi otomatik yükle */
     var autoLoad: Boolean get() = bool("auto_load", true); set(v) = put("auto_load", v)
     /** Açılışta son izlenen kanalı otomatik oynat */
@@ -100,8 +134,16 @@ object Parental {
         }
         val d = AlertDialog.Builder(ctx).setTitle("🔒 $title").setView(et)
             .setPositiveButton("Tamam") { _, _ ->
-                if (et.text.toString() == Settings.pin) { unlocked = true; onOk() }
-                else Toast.makeText(ctx, "PIN hatalı", Toast.LENGTH_SHORT).show()
+                val wait = Settings.pinLockRemaining()
+                when {
+                    wait > 0 -> Toast.makeText(ctx, "Çok fazla hatalı deneme. ${(wait + 999) / 1000} sn bekleyin.", Toast.LENGTH_LONG).show()
+                    Settings.verifyPin(et.text.toString()) -> { unlocked = true; onOk() }
+                    else -> {
+                        val w = Settings.pinLockRemaining()
+                        Toast.makeText(ctx, if (w > 0) "PIN hatalı. ${(w + 999) / 1000} sn bekleyin." else "PIN hatalı",
+                            Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
             .setNegativeButton("Vazgeç", null).create()
         d.show()

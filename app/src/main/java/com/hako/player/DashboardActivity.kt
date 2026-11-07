@@ -131,8 +131,7 @@ class DashboardActivity : AppCompatActivity() {
         loadJob?.cancel()
         loadJob = lifecycleScope.launch {
             val ids = mapOf(Kind.LIVE to R.id.countLive, Kind.MOVIE to R.id.countMovie, Kind.SERIES to R.id.countSeries)
-            val jobs = ids.keys.associateWith { k ->
-                async {
+            suspend fun loadOne(k: Kind): Boolean = run {
                     try {
                         val cats = src.categories(k)
                         Session.rememberCats(k, cats)
@@ -142,13 +141,17 @@ class DashboardActivity : AppCompatActivity() {
                         }
                         if (k == Kind.LIVE) maybeAutoPlay(src)
                         true
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         findViewById<TextView>(ids.getValue(k)).text = "yüklenemedi"
                         false
                     }
-                }
             }
-            val ok = jobs.values.map { it.await() }
+            // Önce Canlı TV (en çok kullanılan) tam bant genişliğiyle, ardından Film ve Dizi paralel
+            val liveOk = loadOne(Kind.LIVE)
+            val rest = listOf(Kind.MOVIE, Kind.SERIES).map { k -> async { loadOne(k) } }
+            val ok = listOf(liveOk) + rest.map { it.await() }
             tvStatus.text = if (ok.all { it }) "" else "Bazı bölümler yüklenemedi. ⟳ Yenile ile tekrar deneyin."
             updateHeader()
         }

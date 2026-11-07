@@ -50,11 +50,14 @@ class PlaylistActivity : AppCompatActivity() {
                 if (etServer.text.isBlank() || etUser.text.isBlank() || etPass.text.isBlank()) {
                     tvError.text = "Sunucu, kullanıcı adı ve şifre gerekli"; return@setOnClickListener
                 }
-                Playlist(id, name, "xtream", etServer.text.toString().trim(),
-                    etUser.text.toString().trim(), etPass.text.toString().trim())
+                val server = UrlCheck.normalize(etServer.text.toString())
+                    ?: run { tvError.text = "Geçersiz sunucu adresi (http:// veya https:// olmalı)"; return@setOnClickListener }
+                Playlist(id, name, "xtream", server, etUser.text.toString().trim(), etPass.text.toString().trim())
             } else {
                 if (etUrl.text.isBlank()) { tvError.text = "M3U adresi gerekli"; return@setOnClickListener }
-                Playlist(id, name, "m3u", url = etUrl.text.toString().trim())
+                val url = UrlCheck.normalize(etUrl.text.toString())
+                    ?: run { tvError.text = "Geçersiz M3U adresi (http:// veya https:// olmalı)"; return@setOnClickListener }
+                Playlist(id, name, "m3u", url = url)
             }
             connect(p, save = true)
         }
@@ -67,7 +70,10 @@ class PlaylistActivity : AppCompatActivity() {
             findViewById<View>(R.id.qrPanel).layoutParams =
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = 32 }
         }
-        server = LocalServer((1000..9999).random().toString(), ::onRemoteSubmit)
+        server = LocalServer((1000..9999).random().toString(), ::onRemoteSubmit).also { srv ->
+            // Çok fazla hatalı denemede kod yenilenir; QR ve ekrandaki kod da güncellensin
+            srv.onCodeChanged = { runOnUiThread { if (resumed) startServer() } }
+        }
     }
 
     override fun onResume() {
@@ -109,8 +115,8 @@ class PlaylistActivity : AppCompatActivity() {
         val name = f["name"].orEmpty().trim().ifEmpty { "Listem" }
         val id = System.currentTimeMillis().toString()
         val p = if (f["type"] == "m3u") {
-            val url = f["url"].orEmpty().trim()
-            if (url.isEmpty()) return false to "M3U adresi gerekli"
+            if (f["url"].isNullOrBlank()) return false to "M3U adresi gerekli"
+            val url = UrlCheck.normalize(f["url"]!!) ?: return false to "Geçersiz M3U adresi (http:// veya https:// olmalı)"
             Playlist(id, name, "m3u", url = url)
         } else {
             val server = f["server"].orEmpty().trim()
@@ -118,7 +124,9 @@ class PlaylistActivity : AppCompatActivity() {
             val pass = f["password"].orEmpty().trim()
             if (server.isEmpty() || user.isEmpty() || pass.isEmpty())
                 return false to "Sunucu, kullanıcı adı ve şifre gerekli"
-            val pl = Playlist(id, name, "xtream", server, user, pass)
+            val srvUrl = UrlCheck.normalize(server) ?: return false to "Geçersiz sunucu adresi (http:// veya https:// olmalı)"
+            if (user.length > 256 || pass.length > 256) return false to "Kullanıcı adı / şifre çok uzun"
+            val pl = Playlist(id, name.take(64), "xtream", srvUrl, user, pass)
             // Kaydetmeden önce bilgileri doğrula, sonucu telefona bildir
             try {
                 runBlocking { withTimeout(25_000) { XtreamSource(pl).login() } }
