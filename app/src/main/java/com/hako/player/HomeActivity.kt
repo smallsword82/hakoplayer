@@ -319,7 +319,7 @@ class HomeActivity : AppCompatActivity() {
         val grid = sec == Section.MOVIE || sec == Section.SERIES
         val landscape = resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT
         // Yatay düzen: film/dizide kategori kolonu dar, afişlere daha çok yer kalsın
-        val catWeight = if (sec == Section.LIVE) 0.65f else 0.27f
+        val catWeight = if (sec == Section.LIVE) 0.65f else 0.36f
         // Favoriler / Son İzlenenler'de kategori yok (yalnızca "Tümü"): sol kolon gizlenir
         rvCats.visibility = if (sec == Section.FAV || sec == Section.RECENT) View.GONE else View.VISIBLE
         val listWeight = 0.85f
@@ -330,7 +330,9 @@ class HomeActivity : AppCompatActivity() {
             val dp = resources.displayMetrics.run { widthPixels / density }
             // Liste alanı genişliği (dp): canlı TV dışındaki bölümlerde önizleme paneli gizli
             val listWidth = if (!landscape) dp else dp * listWeight / (catWeight + listWeight) - 16
-            rvItems.layoutManager = GridLayoutManager(this, (listWidth / 118).toInt().coerceAtLeast(2))
+            // TV'de satırda 5 afiş; telefonda ekran genişliğine göre
+            val cols = if (landscape) 5 else (listWidth / 118).toInt().coerceAtLeast(2)
+            rvItems.layoutManager = GridLayoutManager(this, cols)
             rvItems.adapter = gridAdapter
         } else {
             rvItems.layoutManager = LinearLayoutManager(this)

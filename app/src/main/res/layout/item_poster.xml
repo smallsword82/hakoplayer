@@ -4,8 +4,8 @@
     android:orientation="vertical" android:background="@drawable/bg_item"
     android:focusable="true" android:clickable="true" android:padding="6dp" android:layout_margin="4dp">
     <FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content">
-        <ImageView android:id="@+id/logo" android:layout_width="match_parent" android:layout_height="190dp"
-            android:scaleType="centerCrop" android:background="#22000000" />
+        <com.hako.player.PosterImageView android:id="@+id/logo" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:scaleType="fitCenter" android:background="#22000000" />
         <TextView android:id="@+id/star" android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:layout_gravity="top|end" android:padding="4dp" android:text="★" android:textColor="#FFCC4D"
             android:visibility="gone" />
