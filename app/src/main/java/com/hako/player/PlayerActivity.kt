@@ -299,8 +299,8 @@ class PlayerActivity : AppCompatActivity() {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 bumpPanelTimer()
                 when (event.keyCode) {
-                    KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { channelKey(-1); return true }
-                    KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { channelKey(+1); return true }
+                    KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { channelKey(+1); return true }  // CH+ = sonraki kanal
+                    KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { channelKey(-1); return true }  // CH- = önceki kanal
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> return true
                     KeyEvent.KEYCODE_MENU -> { hideChannelPanel(); return true }
                 }
@@ -311,8 +311,8 @@ class PlayerActivity : AppCompatActivity() {
             val controllerHidden = !view.isControllerFullyVisible
             when (event.keyCode) {
                 // CH/PRG ±: liste açılmadan kanalı değiştir
-                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { channelKey(-1); return true }
-                KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { channelKey(+1); return true }
+                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { channelKey(+1); return true }  // CH+ = sonraki kanal
+                KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { channelKey(-1); return true }  // CH- = önceki kanal
                 KeyEvent.KEYCODE_DPAD_UP -> if (isLive && controllerHidden) { zap(-1); return true }
                 KeyEvent.KEYCODE_DPAD_DOWN -> if (isLive && controllerHidden) { zap(+1); return true }
                 KeyEvent.KEYCODE_MENU -> { cycleResize(); return true }
