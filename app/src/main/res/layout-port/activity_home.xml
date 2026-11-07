@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+
+    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:background="@color/panel" android:scrollbars="none">
+        <LinearLayout android:id="@+id/nav" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="horizontal" android:padding="6dp">
+            <TextView android:id="@+id/navLive" style="@style/NavBtn" android:text="📺 Canlı" />
+            <TextView android:id="@+id/navMovie" style="@style/NavBtn" android:text="🎬 Filmler" />
+            <TextView android:id="@+id/navSeries" style="@style/NavBtn" android:text="🎞 Diziler" />
+            <TextView android:id="@+id/navFav" style="@style/NavBtn" android:text="⭐ Favori" />
+            <TextView android:id="@+id/navRecent" style="@style/NavBtn" android:text="🕘 Son" />
+            <TextView android:id="@+id/navReload" style="@style/NavBtn" android:text="⟳" />
+            <TextView android:id="@+id/navBack" style="@style/NavBtn" android:text="⇦ Listeler" />
+        </LinearLayout>
+    </HorizontalScrollView>
+    <TextView android:id="@+id/tvAccount" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:textColor="@color/muted" android:textSize="11sp" android:paddingLeft="12dp" />
+
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvCategories"
+        android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="6dp"
+        android:clipToPadding="false" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical" android:paddingLeft="10dp" android:paddingRight="10dp">
+        <TextView android:id="@+id/tvTitle" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:textSize="16sp" android:textStyle="bold" android:singleLine="true" />
+        <EditText android:id="@+id/etSearch" style="@style/Field" android:layout_width="160dp"
+            android:layout_marginTop="0dp" android:hint="🔍 Ara" android:imeOptions="actionSearch" />
+    </LinearLayout>
+    <ProgressBar android:id="@+id/progress" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:layout_gravity="center" android:visibility="gone" />
+    <TextView android:id="@+id/tvEmpty" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="center" android:textColor="@color/muted" android:visibility="gone" android:padding="24dp" />
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvItems"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:padding="6dp" android:clipToPadding="false" />
+</LinearLayout>
