@@ -4,6 +4,16 @@ IBO Player / Hiremco tarzı bir IPTV **oynatıcı**. İçerik sağlamaz; kullan�
 veya M3U aboneliğini ekler.
 
 ## Özellikler
+- **Ana sayfa:** Açılışta son liste otomatik yüklenir. Büyük kutucuklar (Canlı TV / Filmler / Diziler ve sayıları),
+  Favoriler, Son İzlenen, Listeler, Ayarlar, Yenile; liste adı, abonelik bitişi ve saat
+- **Ayarlar:** otomatik yükleme, açılışta son kanalı oynatma, saat formatı, A-Z sıralama, canlı yayın formatı
+  (Otomatik / TS / HLS), özel User-Agent, liste güncelleme sıklığı, önbellek temizleme, cihaz bilgisi
+- **Ebeveyn kontrolü (varsayılan PIN 0000):**
+  - Yetişkin içerik otomatik algılanır: sunucunun `is_adult` işareti + kategori adlarında anahtar kelimeler
+    (XXX, Adult, 18+, Yetişkin, Porn, Erotik, Erwachsene, Adulte, Adultos...). "Sussex", "Adult Swim" gibi adlar hariç.
+  - Mod: PIN ile kilitle / Tamamen gizle / Kapalı (değiştirmek PIN ister)
+  - İstenen kategoriler elle kilitlenebilir (Ayarlar'dan veya kategoriye uzun basarak)
+  - PIN bir kez girilince uygulama kapanana kadar açık kalır; "Kilitleri şimdi kapat" ile tekrar kilitlenir
 - Xtream Codes girişi (sunucu / kullanıcı / şifre) ve M3U URL desteği, birden fazla kayıtlı liste
 - **Telefonla ekleme (QR):** Liste ekranında QR kod çıkar. Telefonla okutunca TV'de çalışan yerel sunucunun
   sayfası açılır (`http://<cihaz-ip>:8686`). Sunucu, kullanıcı adı ve şifre telefondan girilir; bilgiler

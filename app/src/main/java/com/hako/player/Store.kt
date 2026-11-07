@@ -18,6 +18,12 @@ class Store(ctx: Context) {
             .remove("fav_$id").remove("recent_$id").apply()
     }
 
+    fun lastPlaylist(): Playlist? {
+        val id = sp.getString("last_playlist", null) ?: return null
+        return playlists().firstOrNull { it.id == id }
+    }
+    fun setLastPlaylist(id: String) = sp.edit().putString("last_playlist", id).apply()
+
     fun favorites(pl: String): List<Item> = arr("fav_$pl").map { Item.from(it) }
     fun isFav(pl: String, item: Item) = favorites(pl).any { it.key == item.key }
     /** @return yeni durum (true = favoriye eklendi) */

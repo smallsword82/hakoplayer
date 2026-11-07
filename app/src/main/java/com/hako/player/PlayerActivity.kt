@@ -220,7 +220,7 @@ class PlayerActivity : AppCompatActivity() {
         if (item.kind != Kind.LIVE) return
         epgJob = lifecycleScope.launch {
             val list = Session.source?.shortEpg(item).orEmpty()
-            val f = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val f = Settings.timeFormat()
             ep.text = list.take(2).mapIndexed { i, e ->
                 "${if (i == 0) "Şimdi" else "Sonra"}  ${f.format(Date(e.start))}-${f.format(Date(e.end))}  ${e.title}"
             }.joinToString("\n")

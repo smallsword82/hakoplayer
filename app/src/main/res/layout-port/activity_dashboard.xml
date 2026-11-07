@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:padding="16dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="HakoPlayer" android:textSize="26sp" android:textStyle="bold" />
+        <TextView android:id="@+id/tvPlaylist" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="wrap_content" android:layout_marginLeft="20dp" android:textColor="@color/muted"
+            android:textSize="14sp" android:maxLines="2" />
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="end">
+            <TextView android:id="@+id/tvClock" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textSize="26sp" android:textStyle="bold" />
+            <TextView android:id="@+id/tvDate" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textColor="@color/muted" android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+    <TextView android:id="@+id/tvStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center" android:textColor="@color/muted" android:padding="8dp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="130dp" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/tileLive" style="@style/Tile" android:background="@drawable/bg_tile_live">
+            <TextView style="@style/TileIcon" android:text="📺" />
+            <TextView style="@style/TileTitle" android:text="Canlı TV" />
+            <TextView android:id="@+id/countLive" style="@style/TileCount" android:text="…" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="130dp" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/tileMovie" style="@style/Tile" android:background="@drawable/bg_tile_movie">
+            <TextView style="@style/TileIcon" android:text="🎬" />
+            <TextView style="@style/TileTitle" android:text="Filmler" />
+            <TextView android:id="@+id/countMovie" style="@style/TileCount" android:text="…" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="130dp" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/tileSeries" style="@style/Tile" android:background="@drawable/bg_tile_series">
+            <TextView style="@style/TileIcon" android:text="🎞" />
+            <TextView style="@style/TileTitle" android:text="Diziler" />
+            <TextView android:id="@+id/countSeries" style="@style/TileCount" android:text="…" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <TextView android:id="@+id/chipFav" style="@style/Chip" android:text="⭐  Favoriler" />
+        <TextView android:id="@+id/chipRecent" style="@style/Chip" android:text="🕘  Son İzlenen" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <TextView android:id="@+id/chipLists" style="@style/Chip" android:text="📋  Listeler" />
+        <TextView android:id="@+id/chipSettings" style="@style/Chip" android:text="⚙  Ayarlar" />
+        <TextView android:id="@+id/chipReload" style="@style/Chip" android:text="⟳  Yenile" />
+    </LinearLayout>
+</LinearLayout>
+</ScrollView>

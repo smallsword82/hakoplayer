@@ -25,7 +25,7 @@ data class Playlist(
     }
 }
 
-data class Category(val id: String, val name: String, var count: Int = 0)
+data class Category(val id: String, val name: String, var count: Int = 0, var adult: Boolean = false)
 
 data class Item(
     val id: String,
@@ -37,19 +37,20 @@ data class Item(
     val epgId: String? = null,
     val num: Int = 0,
     val extra: String? = null, // puan / yıl vb.
+    val adult: Boolean = false, // sunucu "is_adult" işareti
 ) {
     val key: String = "${kind.name}:$id"
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("name", name).put("logo", logo).put("cat", categoryId)
-        .put("kind", kind.name).put("url", url).put("epg", epgId).put("num", num).put("extra", extra)
+        .put("kind", kind.name).put("url", url).put("epg", epgId).put("num", num).put("extra", extra).put("adult", adult)
 
     companion object {
         fun from(o: JSONObject) = Item(
             o.getString("id"), o.optString("name"), o.optString("logo").ifEmpty { null },
             o.optString("cat"), Kind.valueOf(o.optString("kind", "LIVE")),
             o.optString("url").ifEmpty { null }, o.optString("epg").ifEmpty { null },
-            o.optInt("num"), o.optString("extra").ifEmpty { null },
+            o.optInt("num"), o.optString("extra").ifEmpty { null }, o.optBoolean("adult"),
         )
     }
 }
@@ -66,4 +67,29 @@ object Session {
     var queue: List<Item> = emptyList()
     var queueIndex: Int = 0
     var seriesItem: Item? = null
+    /** "LIVE:12" -> kategori adı (ebeveyn kontrolü için) */
+    val catNames = java.util.concurrent.ConcurrentHashMap<String, String>()
+    /** Sunucunun yetişkin olarak işaretlediği kategoriler ("LIVE:12") */
+    val adultCats: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    fun sourceFor(p: Playlist): Source = if (p.type == "xtream") XtreamSource(p) else M3USource(p)
+
+    /** Listeye bağlanır (bilgileri doğrular) ve oturumu ayarlar */
+    suspend fun connect(store: Store, p: Playlist): Source {
+        val src = sourceFor(p)
+        if (src is XtreamSource) src.login() else src.items(Kind.LIVE)
+        playlist = p; source = src
+        catNames.clear(); adultCats.clear()
+        Parental.unlocked = false
+        store.setLastPlaylist(p.id)
+        return src
+    }
+
+    fun rememberCats(kind: Kind, cats: List<Category>) {
+        for (c in cats) if (c.id != "*") {
+            val k = Parental.catKey(kind, c.id)
+            catNames[k] = c.name
+            if (c.adult) adultCats += k
+        }
+    }
 }

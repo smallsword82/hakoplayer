@@ -10,6 +10,8 @@ import coil.dispose
 import coil.load
 
 class CategoryAdapter(
+    private val isLocked: (Category) -> Boolean = { false },
+    private val onLong: (Category) -> Unit = {},
     private val onClick: (Category) -> Unit,
 ) : RecyclerView.Adapter<CategoryAdapter.VH>() {
     var items: List<Category> = emptyList()
@@ -31,10 +33,11 @@ class CategoryAdapter(
 
     override fun onBindViewHolder(h: VH, i: Int) {
         val c = items[i]
-        h.name.text = c.name
+        h.name.text = if (isLocked(c)) "🔒 ${c.name}" else c.name
         h.count.text = if (c.count > 0) c.count.toString() else ""
         h.itemView.isSelected = c.id == selectedId
         h.itemView.setOnClickListener { onClick(c) }
+        h.itemView.setOnLongClickListener { onLong(c); true }
     }
 
     override fun getItemCount() = items.size

@@ -10,6 +10,7 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         Net.cacheDir = cacheDir
+        Settings.init(this)
     }
 
     /** Logolar/afişler: bellek + 200 MB disk önbelleği, RGB565 (yarı bellek), geçiş animasyonu yok */

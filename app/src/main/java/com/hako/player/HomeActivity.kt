@@ -33,7 +33,13 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var tvEmpty: TextView
     private lateinit var progress: ProgressBar
     private lateinit var etSearch: EditText
-    private val catAdapter = CategoryAdapter { selectCategory(it) }
+    private val catAdapter = CategoryAdapter(
+        isLocked = { it.id != "*" && it.id in lockedIds },
+        onLong = { toggleCategoryLock(it) },
+    ) { selectCategory(it) }
+    /** Bu bölümde kilitli kategori id'leri (PIN girilince boşalır) */
+    private var lockedIds: Set<String> = emptySet()
+    private var sectionCats: List<Category> = emptyList()
     private lateinit var listAdapter: ItemAdapter
     private lateinit var gridAdapter: ItemAdapter
 
@@ -80,7 +86,7 @@ class HomeActivity : AppCompatActivity() {
         gridAdapter = ItemAdapter(true, fav, ::open, ::toggleFav)
 
         navIds.forEach { (sec, id) -> findViewById<View>(id).setOnClickListener { showSection(sec) } }
-        findViewById<View>(R.id.navBack).setOnClickListener { finish() }
+        findViewById<View>(R.id.navBack).setOnClickListener { finish() } // ana sayfaya dön
         findViewById<View>(R.id.navReload).setOnClickListener {
             src.clearCache(); showSection(section)
             Toast.makeText(this, "Liste yenileniyor…", Toast.LENGTH_SHORT).show()
@@ -95,8 +101,9 @@ class HomeActivity : AppCompatActivity() {
         lifecycleScope.launch {
             findViewById<TextView>(R.id.tvAccount).text = try { src.accountInfo() } catch (e: Exception) { pl.name }
         }
-        showSection(Section.LIVE)
-        findViewById<View>(R.id.navLive).requestFocus()
+        val start = intent.getStringExtra("section")?.let { runCatching { Section.valueOf(it) }.getOrNull() } ?: Section.LIVE
+        showSection(start)
+        findViewById<View>(navIds.getValue(start)).requestFocus()
     }
 
     private fun reloadFavKeys() {
@@ -106,6 +113,7 @@ class HomeActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         reloadFavKeys()
+        computeLocks()
         // Favori yıldızları / son izlenenler güncel olsun
         if (section == Section.FAV || section == Section.RECENT) showSection(section)
         else rvItems.adapter?.notifyDataSetChanged()
@@ -139,6 +147,7 @@ class HomeActivity : AppCompatActivity() {
         if (sec == Section.FAV || sec == Section.RECENT) {
             allItems = if (sec == Section.FAV) store.favorites(pl.id) else store.recents(pl.id)
             byCat = emptyMap()
+            sectionCats = emptyList(); lockedIds = emptySet()
             catAdapter.items = listOf(Category("*", "Tümü", allItems.size))
             selectCategory(catAdapter.items[0])
             return
@@ -150,11 +159,15 @@ class HomeActivity : AppCompatActivity() {
         loadJob = lifecycleScope.launch {
             try {
                 val kind = kindOf(sec)
-                val items = src.items(kind)
-                val cats = src.categories(kind).filter { it.id == "*" || it.count > 0 }
+                val raw = src.items(kind)
+                val items = if (Settings.sortAz) withContext(Dispatchers.Default) { raw.sortedBy { it.name.lowercase() } } else raw
+                val allCats = src.categories(kind)
+                Session.rememberCats(kind, allCats)
+                val cats = allCats.filter { it.id == "*" || it.count > 0 }
+                sectionCats = cats
+                computeLocks(resetList = true)
                 byCat = withContext(Dispatchers.Default) { items.groupBy { it.categoryId } }
                 allItems = items
-                catAdapter.items = cats
                 progress.visibility = View.GONE
                 catAdapter.items.firstOrNull()?.let { selectCategory(it) }
                 prefetchOthers()
@@ -167,7 +180,41 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
+    /** Kilitli kategorileri bir kez hesaplar (her satırda tekrar kontrol edilmez) */
+    private fun computeLocks(resetList: Boolean = false) {
+        if (section == Section.FAV || section == Section.RECENT) { lockedIds = emptySet(); return }
+        val kind = kindOf(section)
+        lockedIds = if (Parental.unlocked) emptySet()
+        else sectionCats.filter { it.id != "*" && Parental.isLocked(pl.id, kind, it.id, it.name) }.map { it.id }.toSet()
+        hideAdultItems = !Parental.unlocked && Settings.adultMode != "off"
+        // "Tamamen gizle" modunda yetişkin kategoriler listeden çıkarılır
+        val visible = sectionCats.filter { it.id == "*" || !Parental.isHidden(kind, it.id, it.name) }
+        if (resetList || visible.size != catAdapter.items.size) catAdapter.items = visible
+        else catAdapter.notifyDataSetChanged()
+    }
+    /** Sunucunun is_adult işaretlediği tekil kanallar "Tümü" ve aramada gizlenir */
+    private var hideAdultItems = false
+
+    /** Kategoriye uzun basınca kilitle / kilidi kaldır (PIN gerekir) */
+    private fun toggleCategoryLock(c: Category) {
+        if (c.id == "*" || section == Section.FAV || section == Section.RECENT) return
+        val doIt = {
+            val key = Parental.catKey(kindOf(section), c.id)
+            val set = Settings.lockedCats(pl.id).toMutableSet()
+            val nowLocked = if (key in set) { set -= key; false } else { set += key; true }
+            Settings.setLockedCats(pl.id, set)
+            if (nowLocked) Parental.unlocked = false
+            computeLocks(); applyFilter()
+            Toast.makeText(this, if (nowLocked) "🔒 ${c.name} kilitlendi" else "🔓 ${c.name} kilidi kaldırıldı", Toast.LENGTH_SHORT).show()
+        }
+        if (Parental.unlocked) doIt() else Parental.askPin(this, "Kategori kilidi") { computeLocks(); doIt() }
+    }
+
     private fun selectCategory(c: Category) {
+        if (c.id in lockedIds) {
+            Parental.askPin(this, "${c.name} kilitli") { computeLocks(); selectCategory(c) }
+            return
+        }
         currentCat = c
         catAdapter.selectedId = c.id
         applyFilter()
@@ -188,12 +235,27 @@ class HomeActivity : AppCompatActivity() {
         val q = etSearch.text.toString().trim()
         val c = currentCat
         filterJob?.cancel()
+        val locked = lockedIds
         if (q.isEmpty()) {
-            setShown(if (c == null || c.id == "*") allItems else byCat[c.id] ?: allItems.filter { it.categoryId == c.id })
+            when {
+                c != null && c.id != "*" -> setShown(byCat[c.id] ?: allItems.filter { it.categoryId == c.id })
+                section == Section.FAV || section == Section.RECENT -> setShown(
+                    if (Parental.unlocked) allItems else allItems.filter { !Parental.isItemLocked(pl.id, it) })
+                locked.isEmpty() && !hideAdultItems -> setShown(allItems)
+                else -> {
+                    val src0 = allItems; val ha = hideAdultItems
+                    filterJob = lifecycleScope.launch {
+                        setShown(withContext(Dispatchers.Default) { src0.filter { it.categoryId !in locked && !(ha && it.adult) } })
+                    }
+                }
+            }
             return
         }
-        // Arama tüm kategorilerde, arka planda ve yazma bitince (300 ms) yapılır
-        val source = allItems
+        // Arama tüm kategorilerde (kilitliler hariç), arka planda ve yazma bitince (300 ms) yapılır
+        val source = if (section == Section.FAV || section == Section.RECENT)
+            allItems.filter { !Parental.isItemLocked(pl.id, it) }
+        else if (locked.isEmpty() && !hideAdultItems) allItems
+        else allItems.filter { it.categoryId !in locked && !(hideAdultItems && it.adult) }
         filterJob = lifecycleScope.launch {
             if (debounce) delay(300)
             val res = withContext(Dispatchers.Default) { source.filter { it.name.contains(q, ignoreCase = true) } }

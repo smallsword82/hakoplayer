@@ -21,9 +21,16 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 object Net {
-    const val UA = "Mozilla/5.0 (Linux; Android 11) HakoPlayer/1.0"
-    /** Liste önbelleği süresi: 6 saat. "Yenile" butonu önbelleği atlar. */
-    const val LIST_TTL = 6 * 60 * 60 * 1000L
+    const val DEFAULT_UA = "Mozilla/5.0 (Linux; Android 11) HakoPlayer/1.0"
+    /** Ayarlardan özel User-Agent girilebilir */
+    val UA: String get() = Settings.userAgent.ifBlank { DEFAULT_UA }
+    /** Liste önbelleği süresi (Ayarlar > Liste güncelleme). "Yenile" butonu önbelleği atlar. */
+    val LIST_TTL: Long get() = Settings.cacheHours * 60 * 60 * 1000L
+
+    /** Tüm liste önbelleğini siler */
+    fun clearListCache() {
+        cacheDir.listFiles()?.forEach { if (it.name.startsWith("list_")) it.delete() }
+    }
 
     /** App.onCreate içinde atanır */
     lateinit var cacheDir: File
@@ -125,6 +132,7 @@ private inline fun <T> readObjectArray(inp: InputStream, wanted: Set<String>, ma
 }
 
 private fun String?.orNull() = if (this.isNullOrBlank()) null else this
+private fun isAdultFlag(v: String?) = v == "1" || v.equals("true", true)
 
 /* -------------------------- XTREAM CODES -------------------------- */
 class XtreamSource(private val p: Playlist) : Source {
@@ -135,7 +143,7 @@ class XtreamSource(private val p: Playlist) : Source {
     private val locks = Kind.values().associateWith { Mutex() }
     @Volatile private var refreshedAt = 0L
     @Volatile private var loginCache: JSONObject? = null
-    private var liveExt = "ts"
+    private var liveExt = if (Settings.liveFormat == "m3u8") "m3u8" else "ts"
     override val title get() = p.name
 
     /** Giriş kontrolü; başarısızsa hata fırlatır */
@@ -146,7 +154,11 @@ class XtreamSource(private val p: Playlist) : Source {
         if (ui.optInt("auth", 0) != 1) throw IOException("Kullanıcı adı / şifre hatalı")
         val formats = ui.optJSONArray("allowed_output_formats")
         val f = (0 until (formats?.length() ?: 0)).map { formats!!.getString(it) }
-        liveExt = if ("m3u8" in f && "ts" !in f) "m3u8" else "ts"
+        liveExt = when (Settings.liveFormat) {
+            "ts" -> "ts"
+            "m3u8" -> "m3u8"
+            else -> if ("m3u8" in f && "ts" !in f) "m3u8" else "ts"
+        }
         loginCache = o
         return o
     }
@@ -171,7 +183,11 @@ class XtreamSource(private val p: Playlist) : Source {
         return locks.getValue(kind).withLock {
             cacheCats[kind]?.let { return@withLock it }
             val counts = HashMap<String, Int>()
-            for (it in items) counts[it.categoryId] = (counts[it.categoryId] ?: 0) + 1
+            val adultIds = HashSet<String>()
+            for (it in items) {
+                counts[it.categoryId] = (counts[it.categoryId] ?: 0) + 1
+                if (it.adult) adultIds += it.categoryId
+            }
             val raw = Net.cached("$api&action=${action(kind, true)}", refreshedAt) { inp ->
                 readObjectArray(inp, setOf("category_id", "category_name")) { f, _ ->
                     Category(f["category_id"].orEmpty(), f["category_name"].orEmpty())
@@ -179,7 +195,7 @@ class XtreamSource(private val p: Playlist) : Source {
             }
             val list = ArrayList<Category>(raw.size + 1)
             list += Category("*", "Tümü", items.size)
-            raw.forEach { it.count = counts[it.id] ?: 0; list += it }
+            raw.forEach { it.count = counts[it.id] ?: 0; it.adult = it.id in adultIds; list += it }
             cacheCats[kind] = list
             list
         }
@@ -193,17 +209,18 @@ class XtreamSource(private val p: Playlist) : Source {
             val user = p.user; val pass = p.pass; val ext = liveExt
             val list: List<Item> = Net.cached("$api&action=${action(kind, false)}", refreshedAt) { inp ->
                 when (kind) {
-                    Kind.LIVE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "num")) { f, i ->
+                    Kind.LIVE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "num", "is_adult")) { f, i ->
                         val id = f["stream_id"].orEmpty()
                         Item(id, f["name"].orEmpty(), f["stream_icon"].orNull(), f["category_id"].orEmpty(), Kind.LIVE,
-                            "$base/live/$user/$pass/$id.$ext", epgId = id, num = f["num"]?.toIntOrNull() ?: (i + 1))
+                            "$base/live/$user/$pass/$id.$ext", epgId = id, num = f["num"]?.toIntOrNull() ?: (i + 1),
+                            adult = isAdultFlag(f["is_adult"]))
                     }
-                    Kind.MOVIE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "container_extension", "rating")) { f, i ->
+                    Kind.MOVIE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "container_extension", "rating", "is_adult")) { f, i ->
                         val id = f["stream_id"].orEmpty()
                         val e = f["container_extension"].orNull() ?: "mp4"
                         Item(id, f["name"].orEmpty(), f["stream_icon"].orNull(), f["category_id"].orEmpty(), Kind.MOVIE,
                             "$base/movie/$user/$pass/$id.$e", num = i + 1,
-                            extra = f["rating"]?.takeIf { it.isNotBlank() && it != "0" })
+                            extra = f["rating"]?.takeIf { it.isNotBlank() && it != "0" }, adult = isAdultFlag(f["is_adult"]))
                     }
                     else -> readObjectArray(inp, setOf("series_id", "name", "cover", "category_id", "rating")) { f, i ->
                         Item(f["series_id"].orEmpty(), f["name"].orEmpty(), f["cover"].orNull(), f["category_id"].orEmpty(),

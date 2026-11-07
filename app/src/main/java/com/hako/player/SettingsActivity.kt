@@ -1,0 +1,216 @@
+package com.hako.player
+
+import android.os.Build
+import android.os.Bundle
+import android.text.InputType
+import android.view.Gravity
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import coil.imageLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class SettingsActivity : AppCompatActivity() {
+    private lateinit var list: LinearLayout
+    /** Satır yenilemek için: değer metnini döndüren fonksiyonlar */
+    private val refreshers = mutableListOf<() -> Unit>()
+
+    override fun onCreate(b: Bundle?) {
+        super.onCreate(b)
+        setContentView(R.layout.activity_settings)
+        list = findViewById(R.id.list)
+        build()
+        list.getChildAt(2)?.requestFocus()
+    }
+
+    private fun build() {
+        header("Genel")
+        toggle("Açılışta son listeyi otomatik yükle", { Settings.autoLoad }) { Settings.autoLoad = it }
+        toggle("Açılışta son izlenen kanalı oynat", { Settings.autoPlayLast }) { Settings.autoPlayLast = it }
+        choice("Saat formatı", listOf("24 saat" to true, "12 saat (AM/PM)" to false), { Settings.clock24 }) { Settings.clock24 = it }
+        choice("Kanal ve film sıralaması", listOf("Sunucu sırası" to false, "A'dan Z'ye" to true), { Settings.sortAz }) {
+            Settings.sortAz = it
+        }
+
+        header("Oynatıcı")
+        choice("Canlı yayın formatı", listOf("Otomatik" to "auto", "MPEG-TS (.ts)" to "ts", "HLS (.m3u8)" to "m3u8"),
+            { Settings.liveFormat }) {
+            Settings.liveFormat = it
+            // Kanal adresleri yeni formatla yeniden oluşturulsun (liste diskten okunur, tekrar indirilmez)
+            Session.playlist?.let { p -> Session.source = Session.sourceFor(p) }
+        }
+        row("User-Agent", { Settings.userAgent.ifBlank { "Varsayılan" } }) {
+            val et = EditText(this).apply {
+                setText(Settings.userAgent); hint = Net.DEFAULT_UA; setSingleLine()
+            }
+            AlertDialog.Builder(this).setTitle("Özel User-Agent").setView(et)
+                .setMessage("Bazı sağlayıcılar belirli bir User-Agent ister. Boş bırakırsanız varsayılan kullanılır.")
+                .setPositiveButton("Kaydet") { _, _ -> Settings.userAgent = et.text.toString().trim(); refresh() }
+                .setNeutralButton("Varsayılan") { _, _ -> Settings.userAgent = ""; refresh() }
+                .setNegativeButton("Vazgeç", null).show()
+        }
+
+        header("Liste")
+        choice("Liste güncelleme sıklığı",
+            listOf("Her açılışta" to 0, "6 saatte bir" to 6, "12 saatte bir" to 12, "Günde bir" to 24, "Haftada bir" to 168),
+            { Settings.cacheHours }) { Settings.cacheHours = it }
+        row("Önbelleği temizle", { "Liste ve resim önbelleği" }) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) {
+                    Net.clearListCache()
+                    imageLoader.diskCache?.clear()
+                }
+                imageLoader.memoryCache?.clear()
+                Session.source?.clearCache()
+                Toast.makeText(this@SettingsActivity, "Önbellek temizlendi", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        header("Ebeveyn Kontrolü")
+        row("Kategori kilitle", { lockSummary() }) { requirePin { pickLockedCategories() } }
+        row("Yetişkin içerik (otomatik)", {
+            when (Settings.adultMode) { "hide" -> "Tamamen gizli"; "off" -> "Kapalı"; else -> "PIN ile kilitli" }
+        }) {
+            // Korumayı gevşetmek PIN ister
+            requirePin {
+                val opts = arrayOf("PIN ile kilitle" to "lock", "Tamamen gizle" to "hide", "Kapalı" to "off")
+                AlertDialog.Builder(this).setTitle("Yetişkin içerik")
+                    .setSingleChoiceItems(opts.map { it.first }.toTypedArray(),
+                        opts.indexOfFirst { it.second == Settings.adultMode }) { d, w ->
+                        Settings.adultMode = opts[w].second
+                        Parental.unlocked = false
+                        refresh(); d.dismiss()
+                    }.show()
+            }
+        }
+        row("PIN değiştir", { "Varsayılan PIN: 0000" }) { requirePin { changePin() } }
+        row("Kilitleri şimdi kapat", { if (Parental.unlocked) "Kilitler şu an açık" else "Kilitli" }) {
+            Parental.unlocked = false; refresh()
+            Toast.makeText(this, "Kilitli içerik tekrar gizlendi", Toast.LENGTH_SHORT).show()
+        }
+
+        header("Hakkında")
+        val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "?" }
+        row("Sürüm", { "HakoPlayer $ver" }) {}
+        row("Cihaz", { "${Build.MANUFACTURER} ${Build.MODEL} • Android ${Build.VERSION.RELEASE}" }) {}
+        row("Yerel IP", { LocalServer.localIp() ?: "Ağ yok" }) {}
+        row("Aktif liste", { Session.playlist?.name ?: "—" }) {}
+    }
+
+    /* ---------------- Ebeveyn kontrolü ---------------- */
+
+    private fun requirePin(then: () -> Unit) {
+        if (Parental.unlocked) then() else Parental.askPin(this, "Ebeveyn PIN'i") { then(); refresh() }
+    }
+
+    private fun lockSummary(): String {
+        val pl = Session.playlist ?: return "Önce bir liste yükleyin"
+        val n = Settings.lockedCats(pl.id).size
+        return if (n == 0) "Kilitli kategori yok" else "$n kategori kilitli"
+    }
+
+    private fun pickLockedCategories() {
+        val pl = Session.playlist; val src = Session.source
+        if (pl == null || src == null) { Toast.makeText(this, "Önce bir liste yükleyin", Toast.LENGTH_SHORT).show(); return }
+        val kinds = arrayOf("📺 Canlı TV" to Kind.LIVE, "🎬 Filmler" to Kind.MOVIE, "🎞 Diziler" to Kind.SERIES)
+        AlertDialog.Builder(this).setTitle("Hangi bölüm?")
+            .setItems(kinds.map { it.first }.toTypedArray()) { _, w ->
+                val kind = kinds[w].second
+                lifecycleScope.launch {
+                    val cats = try { src.categories(kind).filter { it.id != "*" } } catch (e: Exception) {
+                        Toast.makeText(this@SettingsActivity, "Kategoriler yüklenemedi", Toast.LENGTH_SHORT).show(); return@launch
+                    }
+                    Session.rememberCats(kind, cats)
+                    val locked = Settings.lockedCats(pl.id).toMutableSet()
+                    val keys = cats.map { Parental.catKey(kind, it.id) }
+                    val checked = BooleanArray(cats.size) { keys[it] in locked }
+                    AlertDialog.Builder(this@SettingsActivity).setTitle("Kilitlenecek kategoriler")
+                        .setMultiChoiceItems(cats.map { it.name }.toTypedArray(), checked) { _, i, on -> checked[i] = on }
+                        .setPositiveButton("Kaydet") { _, _ ->
+                            keys.forEachIndexed { i, k -> if (checked[i]) locked += k else locked -= k }
+                            Settings.setLockedCats(pl.id, locked)
+                            Parental.unlocked = false // kaydettikten sonra kilitler devreye girsin
+                            refresh()
+                        }
+                        .setNegativeButton("Vazgeç", null).show()
+                }
+            }.show()
+    }
+
+    private fun changePin() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 16, 48, 0) }
+        fun field(h: String) = EditText(this).apply {
+            hint = h
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        }.also { box.addView(it) }
+        val a = field("Yeni PIN (4 hane)"); val c = field("Yeni PIN tekrar")
+        AlertDialog.Builder(this).setTitle("PIN değiştir").setView(box)
+            .setPositiveButton("Kaydet") { _, _ ->
+                val p = a.text.toString()
+                when {
+                    p.length != 4 -> toast("PIN 4 haneli olmalı")
+                    p != c.text.toString() -> toast("PIN'ler eşleşmiyor")
+                    else -> { Settings.pin = p; toast("PIN değiştirildi") }
+                }
+            }
+            .setNegativeButton("Vazgeç", null).show()
+    }
+
+    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+
+    /* ---------------- Satır yardımcıları ---------------- */
+
+    private fun refresh() = refreshers.forEach { it() }
+
+    private fun header(t: String) {
+        list.addView(TextView(this).apply {
+            text = t.uppercase(); textSize = 13f
+            setTextColor(ContextCompat.getColor(context, R.color.accent))
+            setPadding(8, 36, 8, 8)
+        })
+    }
+
+    private fun row(title: String, value: () -> String, onClick: () -> Unit) {
+        val r = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundResource(R.drawable.bg_item)
+            isFocusable = true; isClickable = true
+            setPadding(28, 26, 28, 26)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 4 }
+        }
+        val t = TextView(this).apply {
+            text = title; textSize = 17f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val v = TextView(this).apply {
+            textSize = 15f; setTextColor(ContextCompat.getColor(context, R.color.muted)); gravity = Gravity.END
+            maxLines = 2
+        }
+        r.addView(t); r.addView(v)
+        val upd = { v.text = value() }
+        upd(); refreshers += upd
+        r.setOnClickListener { onClick(); refresh() }
+        list.addView(r)
+    }
+
+    private fun toggle(title: String, get: () -> Boolean, set: (Boolean) -> Unit) =
+        row(title, { if (get()) "✅ Açık" else "⬜ Kapalı" }) { set(!get()) }
+
+    private fun <T> choice(title: String, options: List<Pair<String, T>>, get: () -> T, set: (T) -> Unit) =
+        row(title, { options.firstOrNull { it.second == get() }?.first ?: "" }) {
+            val cur = options.indexOfFirst { it.second == get() }
+            AlertDialog.Builder(this).setTitle(title)
+                .setSingleChoiceItems(options.map { it.first }.toTypedArray(), cur) { d, w ->
+                    set(options[w].second); refresh(); d.dismiss()
+                }.show()
+        }
+}

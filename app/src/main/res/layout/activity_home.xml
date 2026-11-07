@@ -15,7 +15,7 @@
         <TextView android:id="@+id/tvAccount" android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:textColor="@color/muted" android:textSize="12sp" />
         <TextView android:id="@+id/navReload" style="@style/NavBtn" android:layout_width="match_parent" android:text="⟳  Yenile" />
-        <TextView android:id="@+id/navBack" style="@style/NavBtn" android:layout_width="match_parent" android:text="⇦  Listeler" />
+        <TextView android:id="@+id/navBack" style="@style/NavBtn" android:layout_width="match_parent" android:text="⌂  Ana Sayfa" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvCategories"

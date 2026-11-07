@@ -143,7 +143,8 @@ class PlaylistActivity : AppCompatActivity() {
         findViewById<View>(R.id.savedTitle).visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
         for (p in list) {
             val tv = TextView(this, null, 0, R.style.NavBtn).apply {
-                text = "▶  ${p.name}   (${if (p.type == "xtream") "Xtream" else "M3U"})"
+                val active = Session.playlist?.id == p.id
+                text = "${if (active) "✅" else "▶"}  ${p.name}   (${if (p.type == "xtream") "Xtream" else "M3U"})"
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 6 }
                 setOnClickListener { connect(p, save = false) }
@@ -166,12 +167,10 @@ class PlaylistActivity : AppCompatActivity() {
         btnAdd.isEnabled = false
         lifecycleScope.launch {
             try {
-                val src: Source = if (p.type == "xtream") XtreamSource(p).also { it.login() }
-                else M3USource(p).also { it.items(Kind.LIVE) }
+                Session.connect(store, p)
                 if (save) store.savePlaylist(p)
-                Session.playlist = p
-                Session.source = src
-                startActivity(Intent(this@PlaylistActivity, HomeActivity::class.java))
+                // Ana sayfaya dön; orada liste otomatik yüklenir
+                finish()
             } catch (e: Exception) {
                 tvError.text = "Bağlanılamadı: ${e.message ?: e.javaClass.simpleName}"
             } finally {
