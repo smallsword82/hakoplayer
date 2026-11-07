@@ -24,16 +24,29 @@
         <TextView android:id="@+id/btnNext" style="@style/NavBtn" android:text="▶" android:textSize="22sp" />
     </LinearLayout>
 
-    <!-- CH+/CH- ile açılan yarı şeffaf kanal listesi -->
-    <LinearLayout android:id="@+id/channelPanel" android:layout_width="380dp" android:layout_height="match_parent"
-        android:layout_gravity="start" android:orientation="vertical" android:background="#8C0B0F1A"
-        android:paddingTop="16dp" android:paddingLeft="10dp" android:paddingRight="10dp" android:visibility="gone">
-        <TextView android:id="@+id/tvPanelTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:paddingLeft="8dp" android:paddingBottom="8dp" android:textSize="15sp" android:textStyle="bold"
-            android:textColor="@color/muted" android:singleLine="true" />
-        <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvChannels"
-            android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false"
-            android:paddingBottom="16dp" />
+    <!-- Tam ekranda OK / Sol ile açılan yarı şeffaf liste: [kategoriler (2. Sol)] [kanallar] -->
+    <LinearLayout android:id="@+id/channelPanel" android:layout_width="wrap_content" android:layout_height="match_parent"
+        android:layout_gravity="start" android:orientation="horizontal" android:background="#8C0B0F1A"
+        android:visibility="gone">
+        <LinearLayout android:id="@+id/panelCats" android:layout_width="260dp" android:layout_height="match_parent"
+            android:orientation="vertical" android:paddingTop="16dp" android:paddingLeft="10dp" android:paddingRight="6dp"
+            android:background="#40000000" android:visibility="gone">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingLeft="8dp" android:paddingBottom="8dp" android:textSize="15sp" android:textStyle="bold"
+                android:textColor="@color/muted" android:singleLine="true" android:text="Kategoriler" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvPanelCats"
+                android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false"
+                android:paddingBottom="16dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="380dp" android:layout_height="match_parent" android:orientation="vertical"
+            android:paddingTop="16dp" android:paddingLeft="10dp" android:paddingRight="10dp">
+            <TextView android:id="@+id/tvPanelTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingLeft="8dp" android:paddingBottom="8dp" android:textSize="15sp" android:textStyle="bold"
+                android:textColor="@color/muted" android:singleLine="true" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvChannels"
+                android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false"
+                android:paddingBottom="16dp" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView android:id="@+id/tvError" android:layout_width="wrap_content" android:layout_height="wrap_content"
