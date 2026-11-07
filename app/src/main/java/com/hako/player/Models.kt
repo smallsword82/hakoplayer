@@ -70,7 +70,7 @@ object Session {
     /** "LIVE:12" -> kategori adı (ebeveyn kontrolü için) */
     val catNames = java.util.concurrent.ConcurrentHashMap<String, String>()
     /** Sunucunun yetişkin olarak işaretlediği kategoriler ("LIVE:12") */
-    val adultCats: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    val adultCats: MutableSet<String> = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
 
     fun sourceFor(p: Playlist): Source = if (p.type == "xtream") XtreamSource(p) else M3USource(p)
 

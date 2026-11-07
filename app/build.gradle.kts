@@ -19,8 +19,8 @@ android {
         applicationId = "com.hako.player"
         minSdk = 21
         targetSdk = 35
-        versionCode = 8
-        versionName = "2.2.0"
+        versionCode = 10
+        versionName = "2.3.0"
     }
 
     signingConfigs {

@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 380" width="1440" height="570">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#3D7BFF"/>
+      <stop offset="1" stop-color="#7A5CFF"/>
+    </linearGradient>
+    <linearGradient id="gl" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#4F8BFF"/>
+      <stop offset="1" stop-color="#9A6BFF"/>
+    </linearGradient>
+    <linearGradient id="dark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#18203A"/>
+      <stop offset="1" stop-color="#0C1020"/>
+    </linearGradient>
+
+    <!-- A: Negatif monogram — yuvarlak oynat üçgeni, içinde oyulmuş H -->
+    <g id="A">
+      <rect width="108" height="108" rx="24" fill="url(#bg)"/>
+      <path d="M35,31L77,54L35,77z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="8" stroke-linejoin="round"/>
+      <g fill="#5266FF">
+        <rect x="41" y="44" width="5" height="20" rx="1.5"/>
+        <rect x="52" y="44" width="5" height="20" rx="1.5"/>
+        <rect x="41" y="52" width="16" height="4"/>
+      </g>
+    </g>
+
+    <!-- B: Canlı halka — oynat + açık halka + canlı yayın noktası -->
+    <g id="B">
+      <rect width="108" height="108" rx="24" fill="url(#bg)"/>
+      <path d="M78.85,43.45A27,27 0 1 1 64.55,29.15" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="73.1" cy="34.9" r="4.5" fill="#FF4D6A"/>
+      <path d="M46,43L62,54L46,65z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>
+    </g>
+
+    <!-- C: TV ekranı — çerçeve, ayak, içinde oynat -->
+    <g id="C">
+      <rect width="108" height="108" rx="24" fill="url(#bg)"/>
+      <rect x="25" y="31" width="58" height="40" rx="9" fill="none" stroke="#FFFFFF" stroke-width="5"/>
+      <path d="M44,80H64" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+      <path d="M49,44L61,51L49,58z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="4" stroke-linejoin="round"/>
+    </g>
+
+    <!-- D: Koyu premium — koyu zemin, renk geçişli H + oynat -->
+    <g id="D">
+      <rect width="108" height="108" rx="24" fill="url(#dark)"/>
+      <rect x="0.75" y="0.75" width="106.5" height="106.5" rx="23.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="1.5"/>
+      <g fill="url(#gl)">
+        <path d="M32,36a3,3 0 0 1 3,-3h6a3,3 0 0 1 3,3v36a3,3 0 0 1 -3,3h-6a3,3 0 0 1 -3,-3z"/>
+        <path d="M64,36a3,3 0 0 1 3,-3h6a3,3 0 0 1 3,3v36a3,3 0 0 1 -3,3h-6a3,3 0 0 1 -3,-3z"/>
+      </g>
+      <path d="M49.5,46L59,54L49.5,62z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="3" stroke-linejoin="round"/>
+    </g>
+  </defs>
+
+  <rect width="960" height="380" fill="#0B0F1A"/>
+
+  <!-- büyük -->
+  <use href="#A" transform="translate(25.5,24) scale(1.75)"/>
+  <use href="#B" transform="translate(265.5,24) scale(1.75)"/>
+  <use href="#C" transform="translate(505.5,24) scale(1.75)"/>
+  <use href="#D" transform="translate(745.5,24) scale(1.75)"/>
+
+  <g font-family="Segoe UI, Arial" text-anchor="middle">
+    <text x="120" y="244" fill="#E8ECF8" font-size="19" font-weight="bold">A · Monogram</text>
+    <text x="120" y="267" fill="#8B95B5" font-size="14">oynat üçgeninde oyulmuş H</text>
+    <text x="360" y="244" fill="#E8ECF8" font-size="19" font-weight="bold">B · Canlı halka</text>
+    <text x="360" y="267" fill="#8B95B5" font-size="14">oynat + canlı yayın noktası</text>
+    <text x="600" y="244" fill="#E8ECF8" font-size="19" font-weight="bold">C · TV ekranı</text>
+    <text x="600" y="267" fill="#8B95B5" font-size="14">en kolay anlaşılan</text>
+    <text x="840" y="244" fill="#E8ECF8" font-size="19" font-weight="bold">D · Koyu premium</text>
+    <text x="840" y="267" fill="#8B95B5" font-size="14">koyu zemin, renkli H</text>
+  </g>
+
+  <!-- küçük boy (TV ana ekranındaki simge boyutuna yakın) -->
+  <use href="#A" transform="translate(96,290) scale(0.444)"/>
+  <use href="#B" transform="translate(336,290) scale(0.444)"/>
+  <use href="#C" transform="translate(576,290) scale(0.444)"/>
+  <use href="#D" transform="translate(816,290) scale(0.444)"/>
+  <text x="480" y="368" fill="#5A6485" font-family="Segoe UI, Arial" font-size="12" text-anchor="middle">alt sıra: küçük boyda nasıl okunduğu</text>
+</svg>

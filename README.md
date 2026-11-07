@@ -1,7 +1,7 @@
 # HakoPlayer (Android telefon + Android TV / Box)
 
-IBO Player / Hiremco tarzı bir IPTV **oynatıcı**. İçerik sağlamaz; kullanıcı kendi Xtream Codes
-veya M3U aboneliğini ekler.
+IBO Player / Hiremco tarzı bir IPTV **oynatıcı**. Uygulama içerik sağlamaz, yalnızca oynatıcıdır;
+kullanıcı kendi Xtream Codes veya M3U aboneliğini ekler.
 
 ## Özellikler
 - **Ana sayfa:** Açılışta son liste otomatik yüklenir. Büyük kutucuklar (Canlı TV / Filmler / Diziler ve sayıları),
@@ -22,7 +22,16 @@ veya M3U aboneliğini ekler.
 - Canlı TV, Filmler, Diziler (sezon ve bölüm), Favoriler, Son İzlenenler
 - Kategoriler ve anlık arama
 - ExoPlayer (Media3): HLS (.m3u8), MPEG-TS (.ts), MP4/MKV; hata olursa otomatik tekrar dener
-- Canlı TV'de kumandayla Yukarı/Aşağı veya CH+/CH- ile kanal değiştirme, kısa EPG (Şimdi / Sonra)
+- **Ücretsiz Türk kanalları (isteğe bağlı):** Liste ekranındaki düğme, üçüncü taraf açık liste olan
+  [iptv-org](https://github.com/iptv-org/iptv) Türkiye listesini (`countries/tr.m3u`) "Ücretsiz TR" adıyla ekler.
+  Onay sorulur, kendiliğinden eklenmez; içerik HakoPlayer'a ait değildir, kanalların çalışması garanti edilmez.
+- **Canlı TV düzeni:** üst sekmeler, kategoriler | kanallar | sağda önizleme. İlk OK önizler, ikinci OK tam ekran.
+  Girişte ilk kanal önizlemede açılır (Ayarlar'dan kapatılabilir). Kategoriden sağa basınca listenin başına gider.
+- **Tam ekran kumanda:** Yukarı/Aşağı ve CH+/CH- kanal değiştirir; OK veya Sol yarı saydam kanal listesini,
+  ikinci Sol kategorileri açar; Sağ oynat/duraklat ve ayarlar panelini açar; Geri önce panelleri kapatır,
+  sonra önizleme ekranına döner. EPG yoksa "Program bilgisi yok" yazar.
+- **Kategori gizleme:** Ayarlar'dan canlı TV / film / dizi kategorileri tamamen gizlenebilir (PIN ister).
+  Yetişkin içerik Son İzlenenler'e hiç yazılmaz.
 - Film ve dizide kaldığı yerden devam; bölüm bitince sıradakine geçer
 - Görüntü oranı: Sığdır / Uzat / Yakınlaştır (kumandada MENU tuşu veya ⤢)
 - Uzun basınca (kumandada OK'e uzun basmak) favorilere ekleme / çıkarma

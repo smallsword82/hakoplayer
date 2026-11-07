@@ -59,6 +59,8 @@ object Settings {
     var autoLoad: Boolean get() = bool("auto_load", true); set(v) = put("auto_load", v)
     /** Açılışta son izlenen kanalı otomatik oynat */
     var autoPlayLast: Boolean get() = bool("auto_play", false); set(v) = put("auto_play", v)
+    /** Canlı TV'ye girince listedeki ilk kanal önizlemede kendiliğinden açılsın */
+    var previewFirstLive: Boolean get() = bool("preview_first_live", true); set(v) = put("preview_first_live", v)
     /** Canlı yayın formatı: auto | ts | m3u8 */
     var liveFormat: String get() = str("live_format", "auto"); set(v) = put("live_format", v)
     var clock24: Boolean get() = bool("clock24", true); set(v) = put("clock24", v)

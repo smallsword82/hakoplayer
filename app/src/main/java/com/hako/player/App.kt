@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 
 class App : Application(), ImageLoaderFactory {
+    @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
     override fun onCreate() {
         super.onCreate()
         Net.cacheDir = cacheDir

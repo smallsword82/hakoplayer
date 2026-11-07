@@ -347,6 +347,8 @@ class M3USource(private val p: Playlist) : Source {
         var info: String? = null
         var group: String? = null
         var sawHeader = false
+        // iptv-org: İngilizce grup adları Türkçeleştirilir, kanal adındaki çözünürlük/ülke ekleri atılır
+        val iptvOrg = FreeLists.isIptvOrg(p.url)
         inp.bufferedReader(Charsets.UTF_8).useLines { lines ->
             for (raw in lines) {
                 val line = raw.trim()
@@ -361,8 +363,9 @@ class M3USource(private val p: Playlist) : Source {
                 }
                 val inf = info ?: continue
                 val attrs = parseAttrs(inf)
-                val name = nameOf(inf).ifEmpty { "Kanal" }
-                val g = attrs["group-title"] ?: group ?: "Diğer"
+                var name = nameOf(inf).ifEmpty { "Kanal" }
+                var g = attrs["group-title"] ?: group ?: "Diğer"
+                if (iptvOrg) { name = FreeLists.cleanName(name).ifEmpty { name }; g = FreeLists.group(g) }
                 out += Item(out.size.toString(), name, attrs["tvg-logo"], g, kindOf(line), line,
                     epgId = attrs["tvg-id"], num = out.size + 1)
                 info = null; group = null

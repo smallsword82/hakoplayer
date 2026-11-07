@@ -6,11 +6,31 @@
         <LinearLayout android:id="@+id/formPanel" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:orientation="vertical" android:padding="24dp" android:background="@drawable/bg_panel">
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:text="HakoPlayer" android:textSize="30sp" android:textStyle="bold" />
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/logo"
+                    android:layout_marginRight="14dp" android:contentDescription="@null" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:text="HakoPlayer" android:textSize="30sp" android:textStyle="bold" />
+            </LinearLayout>
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:textColor="@color/muted" android:layout_marginTop="4dp"
                 android:text="Kendi IPTV aboneliğinizi ekleyin. Uygulama içerik sağlamaz, yalnızca oynatıcıdır." />
+
+            <!-- Üçüncü taraf açık liste (iptv-org). Hiç liste yokken en üstte; varken kayıtlı listelerin altında -->
+            <LinearLayout android:id="@+id/freeBox" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:layout_marginTop="18dp" android:padding="16dp"
+                android:background="@drawable/bg_free">
+                <TextView android:id="@+id/tvFreeHint" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="@color/text" android:textSize="15sp"
+                    android:text="Aboneliğiniz yok mu? Herkese açık ulusal kanalları tek tuşla açın." />
+                <Button android:id="@+id/btnFreeTr" style="@style/Btn" android:layout_width="match_parent"
+                    android:layout_marginTop="10dp" android:textSize="17sp"
+                    android:text="📺 Ücretsiz Türk kanalları ekle" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp" android:textColor="@color/muted" android:textSize="12sp"
+                    android:text="Kaynak: iptv-org (üçüncü taraf açık liste)" />
+            </LinearLayout>
 
             <TextView android:id="@+id/savedTitle" android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:text="Kayıtlı listeler" android:textStyle="bold" android:layout_marginTop="18dp" />

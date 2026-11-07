@@ -62,6 +62,8 @@ class PlaylistActivity : AppCompatActivity() {
             connect(p, save = true)
         }
 
+        findViewById<View>(R.id.btnFreeTr).setOnClickListener { addFreeTr() }
+
         // Yatay ekranda (TV) form ve QR yan yana
         if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
             findViewById<LinearLayout>(R.id.row).orientation = LinearLayout.HORIZONTAL
@@ -166,13 +168,46 @@ class PlaylistActivity : AppCompatActivity() {
             }
             box.addView(tv)
         }
+        layoutFreeBox(list)
         if (list.isNotEmpty()) box.getChildAt(0).requestFocus()
+        else findViewById<View>(R.id.btnFreeTr).requestFocus()
+    }
+
+    /**
+     * Hiç liste yokken (ilk açılış) ücretsiz liste kutusu üstte ve belirgin durur.
+     * Liste varsa formun altına iner; Türkiye listesi zaten kayıtlıysa "aç" olarak görünür.
+     */
+    private fun layoutFreeBox(list: List<Playlist>) {
+        val panel = findViewById<LinearLayout>(R.id.formPanel)
+        val freeBox = findViewById<View>(R.id.freeBox)
+        // Liste yoksa en üstte; varsa kayıtlı listelerin hemen altında (yeni liste formunun üstünde)
+        val anchor = findViewById<View>(if (list.isEmpty()) R.id.savedTitle else R.id.savedList)
+        panel.removeView(freeBox)
+        panel.addView(freeBox, panel.indexOfChild(anchor) + if (list.isEmpty()) 0 else 1)
+        val saved = FreeLists.findTr(list) != null
+        findViewById<TextView>(R.id.btnFreeTr).text =
+            if (saved) "📺 Ücretsiz Türk kanallarını aç" else "📺 Ücretsiz Türk kanalları ekle"
+        findViewById<View>(R.id.tvFreeHint).visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    /** iptv-org Türkiye listesi: zaten kayıtlıysa onu açar, değilse onay alıp ekler */
+    private fun addFreeTr() {
+        FreeLists.findTr(store.playlists())?.let { connect(it, save = false); return }
+        AlertDialog.Builder(this)
+            .setTitle("Ücretsiz Türk kanalları")
+            .setMessage(FreeLists.DISCLAIMER)
+            .setPositiveButton("Ekle ve aç") { _, _ ->
+                connect(Playlist(System.currentTimeMillis().toString(), FreeLists.TR_NAME, "m3u", url = FreeLists.TR_URL), save = true)
+            }
+            .setNegativeButton("Vazgeç", null)
+            .show()
     }
 
     private fun connect(p: Playlist, save: Boolean) {
         tvError.text = ""
         progress.visibility = View.VISIBLE
         btnAdd.isEnabled = false
+        findViewById<View>(R.id.btnFreeTr).isEnabled = false
         lifecycleScope.launch {
             try {
                 Session.connect(store, p)
@@ -184,6 +219,7 @@ class PlaylistActivity : AppCompatActivity() {
             } finally {
                 progress.visibility = View.GONE
                 btnAdd.isEnabled = true
+                findViewById<View>(R.id.btnFreeTr).isEnabled = true
             }
         }
     }

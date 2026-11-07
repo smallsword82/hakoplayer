@@ -184,6 +184,26 @@ class HomeActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    /** Kategorilerden sağa geçince odak karşıdaki satıra değil listenin başına gitsin */
+    override fun dispatchKeyEvent(e: android.view.KeyEvent): Boolean {
+        if (e.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT && rvCats.hasFocus()
+            && rvItems.visibility == View.VISIBLE && (rvItems.adapter?.itemCount ?: 0) > 0) {
+            if (e.action == android.view.KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
+                rvItems.scrollToPosition(0)
+                focusFirstItem(10)
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(e)
+    }
+
+    private fun focusFirstItem(tries: Int) {
+        rvItems.post {
+            val v = rvItems.layoutManager?.findViewByPosition(0)
+            if (v != null) v.requestFocus() else if (tries > 0) rvItems.postDelayed({ focusFirstItem(tries - 1) }, 50)
+        }
+    }
+
     /** Satırlar çizilene kadar kısa aralıklarla dener */
     private fun focusFirstCategory(tries: Int) {
         rvCats.postDelayed({
@@ -224,7 +244,8 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    private fun startPreview(item: Item) {
+    /** record = false: kendiliğinden açılan önizleme son izlenenlere yazılmaz */
+    private fun startPreview(item: Item, record: Boolean = true) {
         val url = item.url ?: return
         val p = ensurePreviewPlayer() ?: return
         previewItem = item
@@ -247,7 +268,7 @@ class HomeActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.previewButtons).visibility = View.VISIBLE
         updatePreviewFav()
-        Session.playlist?.let { store.addRecent(it.id, item) }
+        if (record) Session.playlist?.let { store.addRecent(it.id, item) }
 
         val ep = findViewById<TextView>(R.id.tvPreviewEpg)
         ep.text = ""
@@ -370,6 +391,12 @@ class HomeActivity : AppCompatActivity() {
                 if (focusCatsOnLoad) {
                     focusCatsOnLoad = false
                     focusFirstCategory(10)
+                }
+                // Ayar açıksa ilk kanal önizlemede başlasın (yetişkin/kilitli kanallar atlanır)
+                if (sec == Section.LIVE && Settings.previewFirstLive && previewItem == null && previewView != null) {
+                    filterJob?.join() // "Tümü" listesi arka planda süzülüyorsa bitsin
+                    shown.firstOrNull { it.url != null && !Parental.isAdultItem(it) && !Parental.isItemLocked(pl.id, it) }
+                        ?.let { startPreview(it, record = false) }
                 }
                 prefetchOthers()
             } catch (e: Exception) {
