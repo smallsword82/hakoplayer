@@ -1,29 +1,80 @@
 package com.hako.player
 
 import android.util.Base64
+import android.util.JsonReader
+import android.util.JsonToken
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.InputStreamReader
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 object Net {
     const val UA = "Mozilla/5.0 (Linux; Android 11) HakoPlayer/1.0"
+    /** Liste önbelleği süresi: 6 saat. "Yenile" butonu önbelleği atlar. */
+    const val LIST_TTL = 6 * 60 * 60 * 1000L
+
+    /** App.onCreate içinde atanır */
+    lateinit var cacheDir: File
+
     val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .connectionPool(ConnectionPool(8, 5, TimeUnit.MINUTES))
         .followRedirects(true).followSslRedirects(true)
+        .retryOnConnectionFailure(true)
         .build()
 
+    /** Küçük yanıtlar için (giriş, EPG, dizi bilgisi) */
     suspend fun get(url: String): String = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(url).header("User-Agent", UA).build()
         client.newCall(req).execute().use { r ->
             if (!r.isSuccessful) throw IOException("Sunucu hatası: HTTP ${r.code}")
             r.body?.string() ?: ""
+        }
+    }
+
+    fun cacheFile(url: String): File {
+        val h = MessageDigest.getInstance("SHA-1").digest(url.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return File(cacheDir, "list_$h")
+    }
+
+    /**
+     * Büyük listeler: diske indirir (önbellek) ve dosyadan akış halinde ayrıştırır.
+     * Tüm yanıt hiçbir zaman tek bir String olarak belleğe alınmaz.
+     */
+    suspend fun <T> cached(url: String, notBefore: Long, parse: (InputStream) -> T): T = withContext(Dispatchers.IO) {
+        val f = cacheFile(url)
+        val mod = f.lastModified()
+        if (f.exists() && mod >= notBefore && System.currentTimeMillis() - mod < LIST_TTL) {
+            try { return@withContext f.inputStream().buffered(64 * 1024).use(parse) } catch (e: Exception) { f.delete() }
+        }
+        val tmp = File(f.path + ".tmp")
+        val req = Request.Builder().url(url).header("User-Agent", UA).build()
+        client.newCall(req).execute().use { r ->
+            if (!r.isSuccessful) throw IOException("Sunucu hatası: HTTP ${r.code}")
+            val body = r.body ?: throw IOException("Boş yanıt")
+            tmp.outputStream().use { out -> body.byteStream().copyTo(out, 64 * 1024) }
+        }
+        try {
+            val result = tmp.inputStream().buffered(64 * 1024).use(parse)
+            tmp.renameTo(f)
+            result
+        } catch (e: Exception) {
+            tmp.delete(); f.delete()
+            throw IOException("Liste okunamadı: ${e.message}")
         }
     }
 }
@@ -35,10 +86,45 @@ interface Source {
     suspend fun items(kind: Kind): List<Item>
     suspend fun seriesInfo(item: Item): SeriesInfo? = null
     suspend fun shortEpg(item: Item): List<EpgEntry> = emptyList()
+    /** Bir sonraki yüklemede sunucudan taze liste çeker */
     fun clearCache()
 }
 
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+
+/* ---------- JsonReader yardımcıları (akış halinde, düşük bellek) ---------- */
+private fun JsonReader.anyString(): String = when (peek()) {
+    JsonToken.STRING, JsonToken.NUMBER -> nextString()
+    JsonToken.BOOLEAN -> nextBoolean().toString()
+    JsonToken.NULL -> { nextNull(); "" }
+    else -> { skipValue(); "" }
+}
+
+/** Kök bir dizi ise her nesnenin alanlarını okur; dizi değilse (hata/boş) boş liste döner */
+private inline fun <T> readObjectArray(inp: InputStream, wanted: Set<String>, map: (Map<String, String>, Int) -> T?): List<T> {
+    val r = JsonReader(InputStreamReader(inp, Charsets.UTF_8))
+    r.isLenient = true
+    if (r.peek() != JsonToken.BEGIN_ARRAY) { r.skipValue(); return emptyList() }
+    val out = ArrayList<T>(1024)
+    val fields = HashMap<String, String>(16)
+    var i = 0
+    r.beginArray()
+    while (r.hasNext()) {
+        if (r.peek() != JsonToken.BEGIN_OBJECT) { r.skipValue(); continue }
+        fields.clear()
+        r.beginObject()
+        while (r.hasNext()) {
+            val n = r.nextName()
+            if (n in wanted) fields[n] = r.anyString() else r.skipValue()
+        }
+        r.endObject()
+        map(fields, i++)?.let { out += it }
+    }
+    r.endArray()
+    return out
+}
+
+private fun String?.orNull() = if (this.isNullOrBlank()) null else this
 
 /* -------------------------- XTREAM CODES -------------------------- */
 class XtreamSource(private val p: Playlist) : Source {
@@ -46,6 +132,9 @@ class XtreamSource(private val p: Playlist) : Source {
     private val api = "$base/player_api.php?username=${enc(p.user)}&password=${enc(p.pass)}"
     private val cacheItems = HashMap<Kind, List<Item>>()
     private val cacheCats = HashMap<Kind, List<Category>>()
+    private val locks = Kind.values().associateWith { Mutex() }
+    @Volatile private var refreshedAt = 0L
+    @Volatile private var loginCache: JSONObject? = null
     private var liveExt = "ts"
     override val title get() = p.name
 
@@ -58,11 +147,12 @@ class XtreamSource(private val p: Playlist) : Source {
         val formats = ui.optJSONArray("allowed_output_formats")
         val f = (0 until (formats?.length() ?: 0)).map { formats!!.getString(it) }
         liveExt = if ("m3u8" in f && "ts" !in f) "m3u8" else "ts"
+        loginCache = o
         return o
     }
 
     override suspend fun accountInfo(): String {
-        val ui = login().getJSONObject("user_info")
+        val ui = (loginCache ?: login()).getJSONObject("user_info")
         val exp = ui.optString("exp_date").toLongOrNull()
         val expTxt = if (exp == null) "Sınırsız" else
             java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault()).format(java.util.Date(exp * 1000))
@@ -77,53 +167,56 @@ class XtreamSource(private val p: Playlist) : Source {
 
     override suspend fun categories(kind: Kind): List<Category> {
         cacheCats[kind]?.let { return it }
-        val a = JSONArray(Net.get("$api&action=${action(kind, true)}"))
         val items = items(kind)
-        val counts = items.groupingBy { it.categoryId }.eachCount()
-        val list = mutableListOf(Category("*", "Tümü", items.size))
-        for (i in 0 until a.length()) {
-            val o = a.getJSONObject(i)
-            val id = o.optString("category_id")
-            list += Category(id, o.optString("category_name"), counts[id] ?: 0)
+        return locks.getValue(kind).withLock {
+            cacheCats[kind]?.let { return@withLock it }
+            val counts = HashMap<String, Int>()
+            for (it in items) counts[it.categoryId] = (counts[it.categoryId] ?: 0) + 1
+            val raw = Net.cached("$api&action=${action(kind, true)}", refreshedAt) { inp ->
+                readObjectArray(inp, setOf("category_id", "category_name")) { f, _ ->
+                    Category(f["category_id"].orEmpty(), f["category_name"].orEmpty())
+                }
+            }
+            val list = ArrayList<Category>(raw.size + 1)
+            list += Category("*", "Tümü", items.size)
+            raw.forEach { it.count = counts[it.id] ?: 0; list += it }
+            cacheCats[kind] = list
+            list
         }
-        cacheCats[kind] = list
-        return list
     }
 
     override suspend fun items(kind: Kind): List<Item> {
         cacheItems[kind]?.let { return it }
-        val txt = Net.get("$api&action=${action(kind, false)}")
-        val list = withContext(Dispatchers.Default) {
-            val a = JSONArray(txt)
-            (0 until a.length()).map { i ->
-                val o = a.getJSONObject(i)
+        return locks.getValue(kind).withLock {
+            cacheItems[kind]?.let { return@withLock it }
+            if (loginCache == null) try { login() } catch (_: Exception) { }
+            val user = p.user; val pass = p.pass; val ext = liveExt
+            val list: List<Item> = Net.cached("$api&action=${action(kind, false)}", refreshedAt) { inp ->
                 when (kind) {
-                    Kind.LIVE -> {
-                        val id = o.optString("stream_id")
-                        Item(id, o.optString("name"), o.optString("stream_icon").ifBlank { null },
-                            o.optString("category_id"), Kind.LIVE,
-                            "$base/live/${p.user}/${p.pass}/$id.$liveExt",
-                            epgId = id, num = o.optInt("num", i + 1))
+                    Kind.LIVE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "num")) { f, i ->
+                        val id = f["stream_id"].orEmpty()
+                        Item(id, f["name"].orEmpty(), f["stream_icon"].orNull(), f["category_id"].orEmpty(), Kind.LIVE,
+                            "$base/live/$user/$pass/$id.$ext", epgId = id, num = f["num"]?.toIntOrNull() ?: (i + 1))
                     }
-                    Kind.MOVIE -> {
-                        val id = o.optString("stream_id")
-                        val ext = o.optString("container_extension", "mp4").ifBlank { "mp4" }
-                        Item(id, o.optString("name"), o.optString("stream_icon").ifBlank { null },
-                            o.optString("category_id"), Kind.MOVIE,
-                            "$base/movie/${p.user}/${p.pass}/$id.$ext",
-                            num = i + 1, extra = o.optString("rating").takeIf { it.isNotBlank() && it != "0" })
+                    Kind.MOVIE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "container_extension", "rating")) { f, i ->
+                        val id = f["stream_id"].orEmpty()
+                        val e = f["container_extension"].orNull() ?: "mp4"
+                        Item(id, f["name"].orEmpty(), f["stream_icon"].orNull(), f["category_id"].orEmpty(), Kind.MOVIE,
+                            "$base/movie/$user/$pass/$id.$e", num = i + 1,
+                            extra = f["rating"]?.takeIf { it.isNotBlank() && it != "0" })
                     }
-                    else -> Item(o.optString("series_id"), o.optString("name"),
-                        o.optString("cover").ifBlank { null }, o.optString("category_id"), Kind.SERIES, null,
-                        num = i + 1, extra = o.optString("rating").takeIf { it.isNotBlank() && it != "0" })
+                    else -> readObjectArray(inp, setOf("series_id", "name", "cover", "category_id", "rating")) { f, i ->
+                        Item(f["series_id"].orEmpty(), f["name"].orEmpty(), f["cover"].orNull(), f["category_id"].orEmpty(),
+                            Kind.SERIES, null, num = i + 1, extra = f["rating"]?.takeIf { it.isNotBlank() && it != "0" })
+                    }
                 }
             }
+            cacheItems[kind] = list
+            list
         }
-        cacheItems[kind] = list
-        return list
     }
 
-    override suspend fun seriesInfo(item: Item): SeriesInfo {
+    override suspend fun seriesInfo(item: Item): SeriesInfo = withContext(Dispatchers.Default) {
         val o = JSONObject(Net.get("$api&action=get_series_info&series_id=${item.id}"))
         val info = o.optJSONObject("info") ?: JSONObject()
         val seasons = mutableListOf<Season>()
@@ -150,7 +243,7 @@ class XtreamSource(private val p: Playlist) : Source {
         val meta = listOf(info.optString("releaseDate"), info.optString("genre"),
             info.optString("rating").let { if (it.isNotBlank()) "★ $it" else "" })
             .filter { it.isNotBlank() }.joinToString(" • ")
-        return SeriesInfo(info.optString("plot"), meta, info.optString("cover").ifBlank { item.logo }, seasons)
+        SeriesInfo(info.optString("plot"), meta, info.optString("cover").ifBlank { item.logo }, seasons)
     }
 
     override suspend fun shortEpg(item: Item): List<EpgEntry> {
@@ -168,69 +261,117 @@ class XtreamSource(private val p: Playlist) : Source {
 
     private fun b64(s: String) = try { String(Base64.decode(s, Base64.DEFAULT), Charsets.UTF_8) } catch (e: Exception) { s }
 
-    override fun clearCache() { cacheItems.clear(); cacheCats.clear() }
+    override fun clearCache() {
+        cacheItems.clear(); cacheCats.clear(); loginCache = null
+        refreshedAt = System.currentTimeMillis() // bundan eski önbellek kullanılmaz
+    }
 }
 
 /* ------------------------------ M3U ------------------------------- */
-class M3USource(private val p: Playlist, private val rawText: String? = null) : Source {
-    private var parsed: List<Item>? = null
+class M3USource(private val p: Playlist) : Source {
+    @Volatile private var parsed: List<Item>? = null
+    private val byKind = HashMap<Kind, List<Item>>()
+    private val lock = Mutex()
+    @Volatile private var refreshedAt = 0L
     override val title get() = p.name
 
     override suspend fun accountInfo() = "${p.name}\nM3U listesi\n${all().size} kayıt"
 
     private suspend fun all(): List<Item> {
         parsed?.let { return it }
-        val text = rawText ?: Net.get(p.url)
-        if (!text.trimStart().startsWith("#EXTM3U") && !text.contains("#EXTINF"))
-            throw IOException("Geçerli bir M3U listesi değil")
-        val list = withContext(Dispatchers.Default) { parse(text) }
-        parsed = list
-        return list
+        return lock.withLock {
+            parsed?.let { return@withLock it }
+            val list = Net.cached(p.url, refreshedAt) { parse(it) }
+            parsed = list
+            list
+        }
     }
 
-    private fun attr(line: String, name: String): String? =
-        Regex("""$name="([^"]*)"""", RegexOption.IGNORE_CASE).find(line)?.groupValues?.get(1)?.ifBlank { null }
-
-    private fun parse(text: String): List<Item> {
-        val out = ArrayList<Item>()
+    private fun parse(inp: InputStream): List<Item> {
+        val out = ArrayList<Item>(4096)
         var info: String? = null
         var group: String? = null
-        for (raw in text.lineSequence()) {
-            val line = raw.trim()
-            when {
-                line.isEmpty() -> {}
-                line.startsWith("#EXTINF", true) -> info = line
-                line.startsWith("#EXTGRP:", true) -> group = line.substringAfter(':').trim()
-                line.startsWith("#") -> {}
-                info != null -> {
-                    val name = info.substringAfterLast(',').trim().ifEmpty { "Kanal" }
-                    val g = attr(info, "group-title") ?: group ?: "Diğer"
-                    val lower = line.lowercase()
-                    val kind = when {
-                        "/movie/" in lower -> Kind.MOVIE
-                        "/series/" in lower -> Kind.EPISODE
-                        Regex("""\.(mp4|mkv|avi|mov)(\?|$)""").containsMatchIn(lower) -> Kind.MOVIE
-                        else -> Kind.LIVE
+        var sawHeader = false
+        inp.bufferedReader(Charsets.UTF_8).useLines { lines ->
+            for (raw in lines) {
+                val line = raw.trim()
+                if (line.isEmpty()) continue
+                if (line[0] == '#') {
+                    when {
+                        line.startsWith("#EXTINF", true) -> { info = line; sawHeader = true }
+                        line.startsWith("#EXTM3U", true) -> sawHeader = true
+                        line.startsWith("#EXTGRP:", true) -> group = line.substring(8).trim()
                     }
-                    out += Item(out.size.toString(), name, attr(info, "tvg-logo"), g, kind, line,
-                        epgId = attr(info, "tvg-id"), num = out.size + 1)
-                    info = null; group = null
+                    continue
                 }
+                val inf = info ?: continue
+                val attrs = parseAttrs(inf)
+                val name = nameOf(inf).ifEmpty { "Kanal" }
+                val g = attrs["group-title"] ?: group ?: "Diğer"
+                out += Item(out.size.toString(), name, attrs["tvg-logo"], g, kindOf(line), line,
+                    epgId = attrs["tvg-id"], num = out.size + 1)
+                info = null; group = null
             }
         }
+        if (!sawHeader) throw IOException("Geçerli bir M3U listesi değil")
         return out
     }
 
-    // Diziler M3U'da bölüm bölüm gelir; "Diziler" bölümünde oynatılabilir öğe olarak gösterilir
-    private fun match(kind: Kind, it: Item) = if (kind == Kind.SERIES) it.kind == Kind.EPISODE else it.kind == kind
+    /** Regex kullanmadan tek geçişte key="value" alanlarını okur */
+    private fun parseAttrs(line: String): Map<String, String> {
+        val m = HashMap<String, String>(8)
+        var i = 0
+        while (true) {
+            val eq = line.indexOf("=\"", i)
+            if (eq < 0) break
+            var ks = eq - 1
+            while (ks >= 0 && (line[ks].isLetterOrDigit() || line[ks] == '-' || line[ks] == '_')) ks--
+            val end = line.indexOf('"', eq + 2)
+            if (end < 0) break
+            val v = line.substring(eq + 2, end)
+            if (v.isNotBlank()) m[line.substring(ks + 1, eq).lowercase()] = v
+            i = end + 1
+        }
+        return m
+    }
+
+    /** Kanal adı: son tırnaktan sonraki ilk virgülden sonrası (adda virgül olabilir) */
+    private fun nameOf(line: String): String {
+        val lastQuote = line.lastIndexOf('"')
+        val comma = line.indexOf(',', if (lastQuote >= 0) lastQuote else 0)
+        return if (comma >= 0) line.substring(comma + 1).trim() else ""
+    }
+
+    private fun kindOf(url: String): Kind {
+        val u = url.substringBefore('?').lowercase()
+        return when {
+            "/movie/" in u -> Kind.MOVIE
+            "/series/" in u -> Kind.EPISODE
+            u.endsWith(".mp4") || u.endsWith(".mkv") || u.endsWith(".avi") || u.endsWith(".mov") -> Kind.MOVIE
+            else -> Kind.LIVE
+        }
+    }
 
     override suspend fun categories(kind: Kind): List<Category> {
         val items = items(kind)
         val groups = LinkedHashMap<String, Int>()
-        items.forEach { groups[it.categoryId] = (groups[it.categoryId] ?: 0) + 1 }
+        for (it in items) groups[it.categoryId] = (groups[it.categoryId] ?: 0) + 1
         return listOf(Category("*", "Tümü", items.size)) + groups.map { Category(it.key, it.key, it.value) }
     }
 
-    override suspend fun items(kind: Kind) = all().filter { match(kind, it) }
-    override fun clearCache() { if (rawText == null) parsed = null }
+    // Diziler M3U'da bölüm bölüm gelir; "Diziler" bölümünde oynatılabilir öğe olarak gösterilir
+    override suspend fun items(kind: Kind): List<Item> {
+        val all = all()
+        synchronized(byKind) { byKind[kind]?.let { return it } }
+        val want = if (kind == Kind.SERIES) Kind.EPISODE else kind
+        val list = withContext(Dispatchers.Default) { all.filter { it.kind == want } }
+        synchronized(byKind) { byKind[kind] = list }
+        return list
+    }
+
+    override fun clearCache() {
+        parsed = null
+        synchronized(byKind) { byKind.clear() }
+        refreshedAt = System.currentTimeMillis()
+    }
 }

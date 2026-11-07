@@ -11,13 +11,16 @@ android {
         applicationId = "com.hako.player"
         minSdk = 21
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8: kod küçültme + optimizasyon (daha küçük ve hızlı APK)
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Not: Kendi imza anahtarınızla imzalayın (README'ye bakın). Şimdilik debug anahtarı.
             signingConfig = signingConfigs.getByName("debug")
         }
@@ -27,7 +30,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { viewBinding = false }
+    buildFeatures { viewBinding = false; buildConfig = false }
+    packaging { resources.excludes += setOf("META-INF/*.kotlin_module", "META-INF/*.version", "kotlin/**", "DebugProbesKt.bin") }
 }
 
 dependencies {

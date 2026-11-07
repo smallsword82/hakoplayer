@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import coil.dispose
 import coil.load
 
 class CategoryAdapter(
@@ -64,8 +65,8 @@ class ItemAdapter(
         h.name.text = it.name
         h.num.text = if (grid) (it.extra?.let { r -> "★ $r" } ?: "") else (i + 1).toString()
         h.star.visibility = if (isFav(it)) View.VISIBLE else View.GONE
-        if (it.logo != null) h.logo.load(it.logo) { crossfade(true); error(android.R.color.transparent) }
-        else h.logo.setImageDrawable(null)
+        if (it.logo != null) h.logo.load(it.logo) { error(android.R.color.transparent) }
+        else { h.logo.dispose(); h.logo.setImageDrawable(null) }
         h.itemView.setOnClickListener { _ -> onClick(it, h.bindingAdapterPosition) }
         h.itemView.setOnLongClickListener { _ -> onLong(it, h.bindingAdapterPosition); true }
     }

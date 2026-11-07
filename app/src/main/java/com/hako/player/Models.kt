@@ -38,7 +38,7 @@ data class Item(
     val num: Int = 0,
     val extra: String? = null, // puan / yıl vb.
 ) {
-    val key get() = "${kind.name}:$id"
+    val key: String = "${kind.name}:$id"
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("name", name).put("logo", logo).put("cat", categoryId)

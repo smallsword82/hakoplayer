@@ -18,6 +18,14 @@ veya M3U aboneliğini ekler.
 - Uzun basınca (kumandada OK'e uzun basmak) favorilere ekleme / çıkarma
 - Tek APK: telefon (dokunmatik, dikey ve yatay) ve Android TV / Box (kumanda, Leanback launcher)
 
+## Performans
+- Release APK R8 ile küçültülür ve optimize edilir (~2 MB). Cihaza her zaman **release** APK kurun; debug sürümü belirgin şekilde yavaştır.
+- Kanal/film listeleri akış halinde ayrıştırılır ve 6 saat diskte önbelleklenir. "Yenile" sunucudan taze liste çeker.
+- Canlı TV yüklendikten sonra Film ve Dizi listeleri arka planda hazırlanır.
+- Logolar/afişler bellek + 200 MB disk önbelleğinde, RGB565 ile tutulur.
+- Arama arka planda ve 300 ms gecikmeli çalışır; kategori geçişleri önceden gruplanmış listeden yapılır.
+- Oynatıcı 1 sn tamponla başlar (varsayılan 2,5 sn), kanal geçişi daha hızlıdır.
+
 ## Kurulum
 `HakoPlayer-1.0.0.apk` dosyasını cihaza atıp açın ("Bilinmeyen kaynaklar" izni gerekir).
 TV box için: APK'yı USB belleğe atın veya "Downloader" uygulamasıyla indirin.
@@ -25,9 +33,9 @@ TV box için: APK'yı USB belleğe atın veya "Downloader" uygulamasıyla indiri
 ## Derleme
 Gereken: JDK 17 veya üzeri ve Android SDK (platform 35).
 ```
-./gradlew assembleDebug
+./gradlew assembleRelease
 ```
-Çıktı: `app/build/outputs/apk/debug/app-debug.apk`
+Çıktı: `app/build/outputs/apk/release/app-release.apk`
 
 ## Yayın öncesi yapılacaklar
 - Kendi imza anahtarınızı oluşturup `app/build.gradle.kts` içindeki release `signingConfig` ayarını değiştirin

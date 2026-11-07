@@ -15,8 +15,11 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class HomeActivity : AppCompatActivity() {
     private enum class Section { LIVE, MOVIE, SERIES, FAV, RECENT }
@@ -39,6 +42,11 @@ class HomeActivity : AppCompatActivity() {
     private var shown: List<Item> = emptyList()
     private var currentCat: Category? = null
     private var loadJob: Job? = null
+    private var filterJob: Job? = null
+    /** Kategoriye göre önceden gruplanmış öğeler (her tıklamada tüm listeyi taramamak için) */
+    private var byCat: Map<String, List<Item>> = emptyMap()
+    /** Favori anahtarları bellekte; her satır çiziminde diskten okunmaz */
+    private val favKeys = HashSet<String>()
     private val navIds = mapOf(
         Section.LIVE to R.id.navLive, Section.MOVIE to R.id.navMovie, Section.SERIES to R.id.navSeries,
         Section.FAV to R.id.navFav, Section.RECENT to R.id.navRecent,
@@ -64,8 +72,10 @@ class HomeActivity : AppCompatActivity() {
         rvCats.layoutManager = LinearLayoutManager(this,
             if (portrait) RecyclerView.HORIZONTAL else RecyclerView.VERTICAL, false)
         rvCats.adapter = catAdapter
+        rvItems.setItemViewCacheSize(24)
 
-        val fav: (Item) -> Boolean = { store.isFav(pl.id, it) }
+        reloadFavKeys()
+        val fav: (Item) -> Boolean = { it.key in favKeys }
         listAdapter = ItemAdapter(false, fav, ::open, ::toggleFav)
         gridAdapter = ItemAdapter(true, fav, ::open, ::toggleFav)
 
@@ -77,7 +87,7 @@ class HomeActivity : AppCompatActivity() {
         }
 
         etSearch.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(e: Editable?) = applyFilter()
+            override fun afterTextChanged(e: Editable?) = applyFilter(debounce = true)
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         })
@@ -89,8 +99,13 @@ class HomeActivity : AppCompatActivity() {
         findViewById<View>(R.id.navLive).requestFocus()
     }
 
+    private fun reloadFavKeys() {
+        favKeys.clear(); store.favorites(pl.id).forEach { favKeys += it.key }
+    }
+
     override fun onResume() {
         super.onResume()
+        reloadFavKeys()
         // Favori yıldızları / son izlenenler güncel olsun
         if (section == Section.FAV || section == Section.RECENT) showSection(section)
         else rvItems.adapter?.notifyDataSetChanged()
@@ -123,6 +138,7 @@ class HomeActivity : AppCompatActivity() {
 
         if (sec == Section.FAV || sec == Section.RECENT) {
             allItems = if (sec == Section.FAV) store.favorites(pl.id) else store.recents(pl.id)
+            byCat = emptyMap()
             catAdapter.items = listOf(Category("*", "Tümü", allItems.size))
             selectCategory(catAdapter.items[0])
             return
@@ -134,9 +150,14 @@ class HomeActivity : AppCompatActivity() {
         loadJob = lifecycleScope.launch {
             try {
                 val kind = kindOf(sec)
-                allItems = src.items(kind)
-                catAdapter.items = src.categories(kind).filter { it.id == "*" || it.count > 0 }
+                val items = src.items(kind)
+                val cats = src.categories(kind).filter { it.id == "*" || it.count > 0 }
+                byCat = withContext(Dispatchers.Default) { items.groupBy { it.categoryId } }
+                allItems = items
+                catAdapter.items = cats
+                progress.visibility = View.GONE
                 catAdapter.items.firstOrNull()?.let { selectCategory(it) }
+                prefetchOthers()
             } catch (e: Exception) {
                 tvEmpty.text = "Yüklenemedi: ${e.message}"
                 tvEmpty.visibility = View.VISIBLE
@@ -153,12 +174,31 @@ class HomeActivity : AppCompatActivity() {
         if (section != Section.FAV && section != Section.RECENT) tvTitle.text = c.name
     }
 
-    private fun applyFilter() {
-        val q = etSearch.text.toString().trim().lowercase()
+    /** Canlı TV açıldıktan sonra Film ve Dizi listelerini arka planda hazırla (sekme geçişi anında olsun) */
+    private var prefetched = false
+    private fun prefetchOthers() {
+        if (prefetched) return
+        prefetched = true
+        lifecycleScope.launch {
+            for (k in listOf(Kind.MOVIE, Kind.SERIES)) try { src.categories(k) } catch (_: Exception) { }
+        }
+    }
+
+    private fun applyFilter(debounce: Boolean = false) {
+        val q = etSearch.text.toString().trim()
         val c = currentCat
-        // Arama yapılırken tüm kategorilerde ara
-        val base = if (q.isNotEmpty() || c == null || c.id == "*") allItems else allItems.filter { it.categoryId == c.id }
-        setShown(if (q.isEmpty()) base else base.filter { it.name.lowercase().contains(q) })
+        filterJob?.cancel()
+        if (q.isEmpty()) {
+            setShown(if (c == null || c.id == "*") allItems else byCat[c.id] ?: allItems.filter { it.categoryId == c.id })
+            return
+        }
+        // Arama tüm kategorilerde, arka planda ve yazma bitince (300 ms) yapılır
+        val source = allItems
+        filterJob = lifecycleScope.launch {
+            if (debounce) delay(300)
+            val res = withContext(Dispatchers.Default) { source.filter { it.name.contains(q, ignoreCase = true) } }
+            setShown(res)
+        }
     }
 
     private fun setShown(list: List<Item>) {
@@ -190,6 +230,7 @@ class HomeActivity : AppCompatActivity() {
 
     private fun toggleFav(item: Item, pos: Int) {
         val added = store.toggleFav(pl.id, item)
+        if (added) favKeys += item.key else favKeys -= item.key
         Toast.makeText(this, if (added) "⭐ Favorilere eklendi" else "Favorilerden çıkarıldı", Toast.LENGTH_SHORT).show()
         if (section == Section.FAV) showSection(Section.FAV) else rvItems.adapter?.notifyItemChanged(pos)
     }
