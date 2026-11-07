@@ -67,8 +67,10 @@ class Store(ctx: Context) {
         return !exists
     }
 
-    fun recents(pl: String): List<Item> = arr("recent_$pl").map { Item.from(it) }
+    /** Yetişkin içerik son izlenenlerde hiç görünmez (eski sürümlerden kalan kayıtlar da süzülür) */
+    fun recents(pl: String): List<Item> = arr("recent_$pl").map { Item.from(it) }.filter { !Parental.isAdultItem(it) }
     fun addRecent(pl: String, item: Item) {
+        if (Parental.isAdultItem(item)) return
         val next = (listOf(item) + recents(pl).filter { it.key != item.key }).take(40)
         sp.edit().putString("recent_$pl", Crypto.encrypt(JSONArray(next.map { it.toJson() }).toString())).apply()
     }

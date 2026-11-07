@@ -125,6 +125,15 @@ object Parental {
         return isLocked(pl, item.kind, item.categoryId)
     }
 
+    /**
+     * Öğe yetişkin içerik mi (PIN açık olsa bile). Son izlenenlere kaydedilmez, önizlemede
+     * kategori dışına taşınmaz. Ebeveyn kontrolü "Kapalı" ise hiçbir şey yetişkin sayılmaz.
+     */
+    fun isAdultItem(item: Item, mode: String = Settings.adultMode): Boolean {
+        if (mode == "off") return false
+        return item.adult || isAdultName(item.name) || isAdultCat(item.kind, item.categoryId)
+    }
+
     /** PIN sorar; doğruysa onOk çağrılır */
     fun askPin(ctx: Context, title: String = "PIN girin", onOk: () -> Unit) {
         val et = EditText(ctx).apply {

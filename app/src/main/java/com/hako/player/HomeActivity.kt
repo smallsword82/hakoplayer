@@ -71,6 +71,8 @@ class HomeActivity : AppCompatActivity() {
     private var previewEpgJob: Job? = null
     private var resumePreview: Runnable? = null
     private var focusCatsOnLoad = false
+    /** Sağda canlı önizleme paneli gösterilen bölümler */
+    private val previewSections = setOf(Section.LIVE, Section.FAV, Section.RECENT)
     private val navIds = mapOf(
         Section.LIVE to R.id.navLive, Section.MOVIE to R.id.navMovie, Section.SERIES to R.id.navSeries,
         Section.FAV to R.id.navFav, Section.RECENT to R.id.navRecent,
@@ -153,7 +155,7 @@ class HomeActivity : AppCompatActivity() {
         computeLocks()
         // Tam ekrandan dönünce, orada en son açılan kanal önizlemede devam etsin.
         // Tam ekran oynatıcı bağlantısını kapatana kadar kısa bekle (tek bağlantılı hesaplar).
-        if (previewItem != null && section == Section.LIVE) {
+        if (previewItem != null && section in previewSections) {
             val back = Session.queue.getOrNull(Session.queueIndex)?.takeIf { it.kind == Kind.LIVE } ?: previewItem
             resumePreview = Runnable {
                 back ?: return@Runnable
@@ -302,10 +304,11 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun showSection(sec: Section) {
-        if (sec != section || sec != Section.LIVE) clearPreview()
+        // Önizleme Canlı TV, Favoriler ve Son İzlenenler arasında geçişte sürer; diğer bölümlerde kapanır
+        if (sec !in previewSections || previewItem?.let { Parental.isAdultItem(it) } == true) clearPreview()
         section = sec
         navIds.forEach { (s, id) -> findViewById<View>(id).isSelected = s == sec }
-        previewPanel?.visibility = if (sec == Section.LIVE) View.VISIBLE else View.GONE
+        previewPanel?.visibility = if (sec in previewSections) View.VISIBLE else View.GONE
         etSearch.setText("")
         loadJob?.cancel()
         tvTitle.text = when (sec) {
@@ -316,7 +319,9 @@ class HomeActivity : AppCompatActivity() {
         val grid = sec == Section.MOVIE || sec == Section.SERIES
         val landscape = resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT
         // Yatay düzen: film/dizide kategori kolonu dar, afişlere daha çok yer kalsın
-        val catWeight = if (grid) 0.27f else 0.65f
+        val catWeight = if (sec == Section.LIVE) 0.65f else 0.27f
+        // Favoriler / Son İzlenenler'de kategori yok (yalnızca "Tümü"): sol kolon gizlenir
+        rvCats.visibility = if (sec == Section.FAV || sec == Section.RECENT) View.GONE else View.VISIBLE
         val listWeight = 0.85f
         if (landscape) (rvCats.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { lp ->
             if (lp.weight != catWeight) { lp.weight = catWeight; rvCats.layoutParams = lp }
@@ -407,6 +412,8 @@ class HomeActivity : AppCompatActivity() {
             Parental.askPin(this, "${c.name} kilitli") { computeLocks(); selectCategory(c) }
             return
         }
+        // Yetişkin kanal önizlemedeyken başka kategoriye geçilirse önizleme kapanır (adı/görüntüsü kalmasın)
+        previewItem?.let { pi -> if (c.id != pi.categoryId && Parental.isAdultItem(pi)) clearPreview() }
         currentCat = c
         catAdapter.selectedId = c.id
         applyFilter()
@@ -476,7 +483,7 @@ class HomeActivity : AppCompatActivity() {
             return
         }
         // Canlı TV (yatay): ilk OK önizlemede açar, aynı kanala tekrar OK tam ekran yapar
-        if (item.kind == Kind.LIVE && section == Section.LIVE && previewView != null) {
+        if (item.kind == Kind.LIVE && section in previewSections && previewView != null) {
             if (previewItem?.key == item.key && previewPlayer != null) goFullscreen(item) else startPreview(item)
             return
         }
