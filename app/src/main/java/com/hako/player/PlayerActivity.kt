@@ -119,7 +119,8 @@ class PlayerActivity : AppCompatActivity() {
         }
         p.prepare()
         p.playWhenReady = true
-        view.useController = true
+        // Canlı yayında play/pause paneli yok: kanal değiştirirken ortaya çıkıp yön tuşlarını kapmasın
+        view.useController = !isLive
         Session.playlist?.let { pl -> if (item.kind != Kind.EPISODE) store.addRecent(pl.id, item) }
         showOverlay(autoHide = true)
         loadEpg(item)
@@ -265,7 +266,7 @@ class PlayerActivity : AppCompatActivity() {
         if (!::channelPanel.isInitialized) return
         channelPanel.visibility = View.GONE
         panelBack.isEnabled = false
-        view.useController = true
+        view.useController = !isLive
         view.requestFocus()
     }
 
