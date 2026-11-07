@@ -31,6 +31,9 @@ class DashboardActivity : AppCompatActivity() {
     private var triedAuto = false
     private var openedAdd = false
     private var autoPlayed = false
+    private var connectJob: Job? = null
+    /** Liste yüklenirken basılan bölüm; yükleme bitince açılır */
+    private var pendingSection: String? = null
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -73,7 +76,8 @@ class DashboardActivity : AppCompatActivity() {
         when {
             src != null && pl != null -> if (loadedFor != pl.id) loadCounts() else updateHeader()
             else -> {
-                val last = store.lastPlaylist()
+                // Son kullanılan yoksa (ör. eski sürümden kalan listeler) kayıtlı ilk liste
+                val last = store.lastPlaylist() ?: store.playlists().firstOrNull()
                 when {
                     last != null && Settings.autoLoad && !triedAuto -> { triedAuto = true; connect(last) }
                     store.playlists().isEmpty() && !openedAdd -> {
@@ -97,15 +101,21 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private fun connect(p: Playlist) {
+        if (connectJob?.isActive == true) return
         tvStatus.text = "\"${p.name}\" yükleniyor…"
         setCounts("…", "…", "…")
-        lifecycleScope.launch {
+        connectJob = lifecycleScope.launch {
             try {
                 Session.connect(store, p)
                 loadCounts()
+                pendingSection?.let { pendingSection = null; openSection(it) }
             } catch (e: Exception) {
                 tvStatus.text = "Bağlanılamadı: ${e.message ?: "hata"} — 📋 Listeler'den kontrol edin"
                 setCounts("—", "—", "—")
+                if (pendingSection != null) {
+                    pendingSection = null
+                    Toast.makeText(this@DashboardActivity, "\"${p.name}\" listesine bağlanılamadı", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -161,8 +171,19 @@ class DashboardActivity : AppCompatActivity() {
 
     private fun openSection(sec: String) {
         if (Session.source == null) {
-            Toast.makeText(this, "Önce bir liste seçin", Toast.LENGTH_SHORT).show()
-            startActivity(Intent(this, PlaylistActivity::class.java))
+            pendingSection = sec
+            // Liste zaten yükleniyorsa bitince bölüm kendiliğinden açılır
+            if (connectJob?.isActive == true) {
+                tvStatus.text = "Liste yükleniyor, birazdan açılacak…"
+                return
+            }
+            // Kayıtlı liste varsa ona bağlan; yoksa liste ekleme ekranına git
+            val p = store.lastPlaylist() ?: store.playlists().firstOrNull()
+            if (p != null) connect(p)
+            else {
+                pendingSection = null
+                startActivity(Intent(this, PlaylistActivity::class.java))
+            }
             return
         }
         startActivity(Intent(this, HomeActivity::class.java).putExtra("section", sec))
