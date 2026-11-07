@@ -16,8 +16,14 @@ class CategoryAdapter(
 ) : RecyclerView.Adapter<CategoryAdapter.VH>() {
     var items: List<Category> = emptyList()
         set(v) { field = v; notifyDataSetChanged() }
+    /** Yalnızca değişen satırlar yenilenir; tümünü yenilemek kumandadaki odağı kaybettirir */
     var selectedId: String? = null
-        set(v) { field = v; notifyDataSetChanged() }
+        set(v) {
+            if (field == v) return
+            val old = field; field = v
+            items.indexOfFirst { it.id == old }.takeIf { it >= 0 }?.let { notifyItemChanged(it) }
+            items.indexOfFirst { it.id == v }.takeIf { it >= 0 }?.let { notifyItemChanged(it) }
+        }
     var horizontal = false
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
@@ -51,6 +57,14 @@ class ItemAdapter(
 ) : RecyclerView.Adapter<ItemAdapter.VH>() {
     var items: List<Item> = emptyList()
         set(v) { field = v; notifyDataSetChanged() }
+    /** Önizlemede oynayan öğe (vurgulanır) */
+    var activeKey: String? = null
+        set(v) {
+            if (field == v) return
+            val old = field; field = v
+            items.indexOfFirst { it.key == old }.takeIf { it >= 0 }?.let { notifyItemChanged(it) }
+            items.indexOfFirst { it.key == v }.takeIf { it >= 0 }?.let { notifyItemChanged(it) }
+        }
 
     class VH(v: View) : RecyclerView.ViewHolder(v) {
         val name: TextView = v.findViewById(R.id.name)
@@ -68,6 +82,7 @@ class ItemAdapter(
         h.name.text = it.name
         h.num.text = if (grid) (it.extra?.let { r -> "★ $r" } ?: "") else (i + 1).toString()
         h.star.visibility = if (isFav(it)) View.VISIBLE else View.GONE
+        h.itemView.isSelected = it.key == activeKey
         if (it.logo != null) h.logo.load(it.logo) { error(android.R.color.transparent) }
         else { h.logo.dispose(); h.logo.setImageDrawable(null) }
         h.itemView.setOnClickListener { _ -> onClick(it, h.bindingAdapterPosition) }

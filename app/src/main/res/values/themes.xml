@@ -23,6 +23,27 @@
         <item name="android:textColor">@color/text</item>
         <item name="android:singleLine">true</item>
     </style>
+    <style name="TopTab">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:background">@drawable/bg_tab</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">12dp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:textColor">@color/tab_text</item>
+        <item name="android:singleLine">true</item>
+    </style>
+    <style name="TabDivider">
+        <item name="android:layout_width">1dp</item>
+        <item name="android:layout_height">26dp</item>
+        <item name="android:layout_marginLeft">4dp</item>
+        <item name="android:layout_marginRight">4dp</item>
+        <item name="android:background">@color/line</item>
+    </style>
     <style name="Field">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
