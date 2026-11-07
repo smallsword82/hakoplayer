@@ -340,7 +340,9 @@ class HomeActivity : AppCompatActivity() {
         }
 
         if (sec == Section.FAV || sec == Section.RECENT) {
-            allItems = if (sec == Section.FAV) store.favorites(pl.id) else store.recents(pl.id)
+            val hidden = Settings.hiddenCats(pl.id)
+            allItems = (if (sec == Section.FAV) store.favorites(pl.id) else store.recents(pl.id))
+                .filter { !Parental.isItemInHiddenCat(pl.id, it, hidden) }
             byCat = emptyMap()
             sectionCats = emptyList(); lockedIds = emptySet()
             catAdapter.items = listOf(Category("*", "Tümü", allItems.size))
@@ -383,11 +385,17 @@ class HomeActivity : AppCompatActivity() {
     private fun computeLocks(resetList: Boolean = false) {
         if (section == Section.FAV || section == Section.RECENT) { lockedIds = emptySet(); return }
         val kind = kindOf(section)
-        lockedIds = if (Parental.unlocked) emptySet()
-        else sectionCats.filter { it.id != "*" && Parental.isLocked(pl.id, kind, it.id, it.name) }.map { it.id }.toSet()
+        val hidden = Settings.hiddenCats(pl.id)
+        // Kullanıcının gizlediği kategoriler PIN açık olsa bile "Tümü" ve aramadan da çıkarılır
+        val hiddenIds = sectionCats.filter { it.id != "*" && Parental.catKey(kind, it.id) in hidden }.map { it.id }.toSet()
+        lockedIds = hiddenIds + (if (Parental.unlocked) emptySet()
+        else sectionCats.filter { it.id != "*" && Parental.isLocked(pl.id, kind, it.id, it.name) }.map { it.id })
         hideAdultItems = !Parental.unlocked && Settings.adultMode != "off"
-        // "Tamamen gizle" modunda yetişkin kategoriler listeden çıkarılır
-        val visible = sectionCats.filter { it.id == "*" || !Parental.isHidden(kind, it.id, it.name) }
+        // Gizlenen kategoriler ve "Tamamen gizle" modundaki yetişkin kategoriler listede görünmez;
+        // "Tümü" sayısı da gizlenenler kadar azalır
+        val hiddenCount = sectionCats.filter { it.id in hiddenIds }.sumOf { it.count }
+        val visible = sectionCats.filter { it.id == "*" || !Parental.isCatHidden(pl.id, kind, it.id, it.name, hidden) }
+            .map { if (it.id == "*" && hiddenCount > 0) it.copy(count = (it.count - hiddenCount).coerceAtLeast(0)) else it }
         if (resetList || visible.size != catAdapter.items.size) catAdapter.items = visible
         else catAdapter.notifyItemRangeChanged(0, catAdapter.itemCount)
     }

@@ -76,6 +76,10 @@ object Settings {
     fun lockedCats(pl: String): Set<String> = sp.getStringSet("locked_$pl", emptySet()) ?: emptySet()
     fun setLockedCats(pl: String, set: Set<String>) = sp.edit().putStringSet("locked_$pl", HashSet(set)).apply()
 
+    /** Kullanıcının gizlediği kategoriler ("LIVE:12"); PIN açık olsa bile hiçbir yerde görünmez */
+    fun hiddenCats(pl: String): Set<String> = sp.getStringSet("hidden_$pl", emptySet()) ?: emptySet()
+    fun setHiddenCats(pl: String, set: Set<String>) = sp.edit().putStringSet("hidden_$pl", HashSet(set)).apply()
+
     fun timeFormat() = SimpleDateFormat(if (clock24) "HH:mm" else "hh:mm a", Locale.getDefault())
 }
 
@@ -109,6 +113,22 @@ object Parental {
     fun isHidden(kind: Kind, catId: String, catName: String? = null) =
         !unlocked && Settings.adultMode == "hide" && isAdultCat(kind, catId, catName)
 
+    /** Kategori listede görünmez mi: kullanıcı gizlediyse ya da "Tamamen gizle" modunda yetişkinse */
+    fun isCatHidden(pl: String, kind: Kind, catId: String, catName: String? = null,
+                    hidden: Set<String> = Settings.hiddenCats(pl)) =
+        catKey(kind, catId) in hidden || isHidden(kind, catId, catName)
+
+    /** Öğe kullanıcının gizlediği bir kategoride mi (favori / son izlenen / arama için) */
+    fun isItemInHiddenCat(pl: String, item: Item, hidden: Set<String> = Settings.hiddenCats(pl)) =
+        catKey(item.kind, item.categoryId) in hidden
+
+    /** "Tümü" sayısından düşülecek: gizlenen kategorilerdeki öğe sayısı */
+    fun hiddenItemCount(pl: String, kind: Kind, cats: List<Category>): Int {
+        val hidden = Settings.hiddenCats(pl)
+        if (hidden.isEmpty()) return 0
+        return cats.filter { it.id != "*" && catKey(kind, it.id) in hidden }.sumOf { it.count }
+    }
+
     fun kindKey(k: Kind) = if (k == Kind.EPISODE) Kind.SERIES.name else k.name
     fun catKey(kind: Kind, catId: String) = "${kindKey(kind)}:$catId"
 
@@ -136,12 +156,26 @@ object Parental {
 
     /** PIN sorar; doğruysa onOk çağrılır */
     fun askPin(ctx: Context, title: String = "PIN girin", onOk: () -> Unit) {
+        val dp = ctx.resources.displayMetrics.density
         val et = EditText(ctx).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = "4 haneli PIN"
-            setPadding(48, 32, 48, 32)
+            hint = "PIN"
+            setSingleLine()
+            textSize = 22f
+            typeface = android.graphics.Typeface.DEFAULT // şifre alanının eş aralıklı yazı tipi yerine
+            gravity = android.view.Gravity.CENTER
+            filters = arrayOf(android.text.InputFilter.LengthFilter(4))
+            setBackgroundResource(R.drawable.bg_field)
+            setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.text))
+            setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
         }
-        val d = AlertDialog.Builder(ctx).setTitle("🔒 $title").setView(et)
+        // Alan pencere kenarlarına yapışmasın
+        val box = android.widget.FrameLayout(ctx).apply {
+            setPadding((24 * dp).toInt(), (8 * dp).toInt(), (24 * dp).toInt(), 0)
+            addView(et, android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT))
+        }
+        val d = AlertDialog.Builder(ctx).setTitle("🔒 $title").setView(box)
             .setPositiveButton("Tamam") { _, _ ->
                 val wait = Settings.pinLockRemaining()
                 when {

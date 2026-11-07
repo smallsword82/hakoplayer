@@ -310,7 +310,9 @@ class PlayerActivity : AppCompatActivity() {
             val raw = rawLiveCats ?: try { src.categories(Kind.LIVE) } catch (_: Exception) { return@launch }
             rawLiveCats = raw
             // "Tümü" yok (yetişkin kanal karışmasın); "Tamamen gizle" modundaki yetişkin kategoriler görünmez
-            val cats = raw.filter { it.id != "*" && it.count > 0 && !Parental.isHidden(Kind.LIVE, it.id, it.name) }
+            val plId = Session.playlist?.id ?: return@launch
+            val hidden = Settings.hiddenCats(plId)
+            val cats = raw.filter { it.id != "*" && it.count > 0 && !Parental.isCatHidden(plId, Kind.LIVE, it.id, it.name, hidden) }
             if (cats.isEmpty() || !panelVisible) return@launch
             panelCatAdapter.items = cats
             val curCat = panelAdapter.items.firstOrNull()?.categoryId ?: current?.categoryId

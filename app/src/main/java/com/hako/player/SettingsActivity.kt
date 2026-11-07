@@ -75,6 +75,7 @@ class SettingsActivity : AppCompatActivity() {
 
         header("Ebeveyn Kontrolü")
         row("Kategori kilitle", { lockSummary() }) { requirePin { pickLockedCategories() } }
+        row("Kategori gizle", { hideSummary() }) { requirePin { pickHiddenCategories() } }
         row("Yetişkin içerik (otomatik)", {
             when (Settings.adultMode) { "hide" -> "Tamamen gizli"; "off" -> "Kapalı"; else -> "PIN ile kilitli" }
         }) {
@@ -118,7 +119,24 @@ class SettingsActivity : AppCompatActivity() {
         return if (n == 0) "Kilitli kategori yok" else "$n kategori kilitli"
     }
 
-    private fun pickLockedCategories() {
+    private fun hideSummary(): String {
+        val pl = Session.playlist ?: return "Önce bir liste yükleyin"
+        val n = Settings.hiddenCats(pl.id).size
+        return if (n == 0) "Gizli kategori yok" else "$n kategori gizli"
+    }
+
+    private fun pickLockedCategories() = pickCategories("Kilitlenecek kategoriler", Settings::lockedCats) { pl, set ->
+        Settings.setLockedCats(pl, set)
+        Parental.unlocked = false // kaydettikten sonra kilitler devreye girsin
+    }
+
+    /** Gizlenen kategoriler PIN açık olsa bile listede, "Tümü"de, aramada, favori/son izlenende görünmez */
+    private fun pickHiddenCategories() = pickCategories("Gizlenecek kategoriler", Settings::hiddenCats) { pl, set ->
+        Settings.setHiddenCats(pl, set)
+    }
+
+    /** Bölüm seçtirir, o bölümün kategorilerini işaretli listeyle gösterir; seçim liste başına saklanır */
+    private fun pickCategories(title: String, get: (String) -> Set<String>, save: (String, Set<String>) -> Unit) {
         val pl = Session.playlist; val src = Session.source
         if (pl == null || src == null) { Toast.makeText(this, "Önce bir liste yükleyin", Toast.LENGTH_SHORT).show(); return }
         val kinds = arrayOf("📺 Canlı TV" to Kind.LIVE, "🎬 Filmler" to Kind.MOVIE, "🎞 Diziler" to Kind.SERIES)
@@ -130,15 +148,14 @@ class SettingsActivity : AppCompatActivity() {
                         Toast.makeText(this@SettingsActivity, "Kategoriler yüklenemedi", Toast.LENGTH_SHORT).show(); return@launch
                     }
                     Session.rememberCats(kind, cats)
-                    val locked = Settings.lockedCats(pl.id).toMutableSet()
+                    val current = get(pl.id).toMutableSet()
                     val keys = cats.map { Parental.catKey(kind, it.id) }
-                    val checked = BooleanArray(cats.size) { keys[it] in locked }
-                    AlertDialog.Builder(this@SettingsActivity).setTitle("Kilitlenecek kategoriler")
+                    val checked = BooleanArray(cats.size) { keys[it] in current }
+                    AlertDialog.Builder(this@SettingsActivity).setTitle(title)
                         .setMultiChoiceItems(cats.map { it.name }.toTypedArray(), checked) { _, i, on -> checked[i] = on }
                         .setPositiveButton("Kaydet") { _, _ ->
-                            keys.forEachIndexed { i, k -> if (checked[i]) locked += k else locked -= k }
-                            Settings.setLockedCats(pl.id, locked)
-                            Parental.unlocked = false // kaydettikten sonra kilitler devreye girsin
+                            keys.forEachIndexed { i, k -> if (checked[i]) current += k else current -= k }
+                            save(pl.id, current)
                             refresh()
                         }
                         .setNegativeButton("Vazgeç", null).show()

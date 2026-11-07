@@ -27,6 +27,7 @@ class DashboardActivity : AppCompatActivity() {
         override fun run() { updateClock(); handler.postDelayed(this, 15_000) }
     }
     private var loadedFor: String? = null
+    private var countedHidden: Set<String> = emptySet()
     private var loadJob: Job? = null
     private var triedAuto = false
     private var openedAdd = false
@@ -60,9 +61,11 @@ class DashboardActivity : AppCompatActivity() {
         }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                AlertDialog.Builder(this@DashboardActivity).setMessage("Uygulamadan çıkılsın mı?")
+                // Vazgeçmek için Geri tuşu yeterli; tek düğme
+                AlertDialog.Builder(this@DashboardActivity).setTitle("Çıkış")
+                    .setMessage("HakoPlayer kapatılsın mı?")
                     .setPositiveButton("Çık") { _, _ -> finishAffinity() }
-                    .setNegativeButton("Vazgeç", null).show()
+                    .show()
             }
         })
         findViewById<View>(R.id.tileLive).requestFocus()
@@ -74,7 +77,8 @@ class DashboardActivity : AppCompatActivity() {
         val src = Session.source
         val pl = Session.playlist
         when {
-            src != null && pl != null -> if (loadedFor != pl.id) loadCounts() else updateHeader()
+            // Ayarlardan kategori gizlendiyse sayılar yeniden hesaplanır (liste önbellekten, hızlı)
+            src != null && pl != null -> if (loadedFor != pl.id || countedHidden != Settings.hiddenCats(pl.id)) loadCounts() else updateHeader()
             else -> {
                 // Son kullanılan yoksa (ör. eski sürümden kalan listeler) kayıtlı ilk liste
                 val last = store.lastPlaylist() ?: store.playlists().firstOrNull()
@@ -125,6 +129,7 @@ class DashboardActivity : AppCompatActivity() {
         val src = Session.source ?: return
         val pl = Session.playlist ?: return
         loadedFor = pl.id
+        countedHidden = Settings.hiddenCats(pl.id)
         updateHeader()
         tvStatus.text = "Liste yükleniyor…"
         setCounts("…", "…", "…")
@@ -135,7 +140,8 @@ class DashboardActivity : AppCompatActivity() {
                     try {
                         val cats = src.categories(k)
                         Session.rememberCats(k, cats)
-                        val n = cats.firstOrNull()?.count ?: 0
+                        // Gizlenen kategorilerdeki öğeler sayılmaz
+                        val n = ((cats.firstOrNull()?.count ?: 0) - Parental.hiddenItemCount(pl.id, k, cats)).coerceAtLeast(0)
                         findViewById<TextView>(ids.getValue(k)).text = when (k) {
                             Kind.LIVE -> "$n kanal"; Kind.MOVIE -> "$n film"; else -> "$n dizi"
                         }
@@ -162,7 +168,7 @@ class DashboardActivity : AppCompatActivity() {
         autoPlayed = true
         val pl = Session.playlist ?: return
         val last = store.recents(pl.id).firstOrNull { it.kind == Kind.LIVE } ?: return
-        if (Parental.isItemLocked(pl.id, last)) return
+        if (Parental.isItemLocked(pl.id, last) || Parental.isItemInHiddenCat(pl.id, last)) return
         val live = src.items(Kind.LIVE)
         val idx = live.indexOfFirst { it.id == last.id }
         if (idx < 0) return
