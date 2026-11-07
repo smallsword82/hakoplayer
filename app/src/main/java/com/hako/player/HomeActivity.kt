@@ -314,10 +314,18 @@ class HomeActivity : AppCompatActivity() {
         }
 
         val grid = sec == Section.MOVIE || sec == Section.SERIES
+        val landscape = resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT
+        // Yatay düzen: film/dizide kategori kolonu dar, afişlere daha çok yer kalsın
+        val catWeight = if (grid) 0.27f else 0.65f
+        val listWeight = 0.85f
+        if (landscape) (rvCats.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { lp ->
+            if (lp.weight != catWeight) { lp.weight = catWeight; rvCats.layoutParams = lp }
+        }
         if (grid) {
             val dp = resources.displayMetrics.run { widthPixels / density }
-            val listWidth = if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) dp else dp - 450
-            rvItems.layoutManager = GridLayoutManager(this, (listWidth / 140).toInt().coerceAtLeast(2))
+            // Liste alanı genişliği (dp): canlı TV dışındaki bölümlerde önizleme paneli gizli
+            val listWidth = if (!landscape) dp else dp * listWeight / (catWeight + listWeight) - 16
+            rvItems.layoutManager = GridLayoutManager(this, (listWidth / 118).toInt().coerceAtLeast(2))
             rvItems.adapter = gridAdapter
         } else {
             rvItems.layoutManager = LinearLayoutManager(this)
