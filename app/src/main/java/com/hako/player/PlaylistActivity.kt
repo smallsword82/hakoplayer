@@ -8,12 +8,17 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import android.content.res.Configuration
 
 class PlaylistActivity : AppCompatActivity() {
     private lateinit var store: Store
     private lateinit var progress: ProgressBar
     private lateinit var tvError: TextView
     private lateinit var btnAdd: Button
+    private var server: LocalServer? = null
+    private var resumed = false
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -53,11 +58,82 @@ class PlaylistActivity : AppCompatActivity() {
             }
             connect(p, save = true)
         }
+
+        // Yatay ekranda (TV) form ve QR yan yana
+        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            findViewById<LinearLayout>(R.id.row).orientation = LinearLayout.HORIZONTAL
+            findViewById<View>(R.id.formPanel).layoutParams =
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1.3f)
+            findViewById<View>(R.id.qrPanel).layoutParams =
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = 32 }
+        }
+        server = LocalServer((1000..9999).random().toString(), ::onRemoteSubmit)
     }
 
     override fun onResume() {
         super.onResume()
+        resumed = true
         renderSaved()
+        startServer()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        resumed = false
+        server?.stop()
+    }
+
+    private fun startServer() {
+        val srv = server ?: return
+        val ivQr = findViewById<ImageView>(R.id.ivQr)
+        val tvUrl = findViewById<TextView>(R.id.tvServerUrl)
+        val tvCode = findViewById<TextView>(R.id.tvCode)
+        val ip = LocalServer.localIp()
+        if (ip == null) {
+            ivQr.setImageDrawable(null)
+            tvUrl.text = "Ağ bağlantısı bulunamadı"
+            tvCode.text = ""
+            return
+        }
+        try { srv.start() } catch (e: Exception) {
+            tvUrl.text = "Sunucu başlatılamadı: ${e.message}"; return
+        }
+        val url = "http://$ip:${srv.port}"
+        ivQr.setImageBitmap(LocalServer.qr("$url/?k=${srv.code}"))
+        tvUrl.text = url
+        tvCode.text = "Kod: ${srv.code}"
+    }
+
+    /** Telefondan gelen form (sunucu iş parçacığında çalışır) */
+    private fun onRemoteSubmit(f: Map<String, String>): Pair<Boolean, String> {
+        val name = f["name"].orEmpty().trim().ifEmpty { "Listem" }
+        val id = System.currentTimeMillis().toString()
+        val p = if (f["type"] == "m3u") {
+            val url = f["url"].orEmpty().trim()
+            if (url.isEmpty()) return false to "M3U adresi gerekli"
+            Playlist(id, name, "m3u", url = url)
+        } else {
+            val server = f["server"].orEmpty().trim()
+            val user = f["username"].orEmpty().trim()
+            val pass = f["password"].orEmpty().trim()
+            if (server.isEmpty() || user.isEmpty() || pass.isEmpty())
+                return false to "Sunucu, kullanıcı adı ve şifre gerekli"
+            val pl = Playlist(id, name, "xtream", server, user, pass)
+            // Kaydetmeden önce bilgileri doğrula, sonucu telefona bildir
+            try {
+                runBlocking { withTimeout(25_000) { XtreamSource(pl).login() } }
+            } catch (e: Exception) {
+                return false to "Sunucuya bağlanılamadı: ${e.message ?: "zaman aşımı"}"
+            }
+            pl
+        }
+        store.savePlaylist(p)
+        runOnUiThread {
+            renderSaved()
+            Toast.makeText(this, "📱 Telefondan liste eklendi: ${p.name}", Toast.LENGTH_LONG).show()
+            if (resumed) connect(p, save = false)
+        }
+        return true to "\"${p.name}\" listesi TV'ye eklendi ve açılıyor."
     }
 
     private fun renderSaved() {

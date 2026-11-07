@@ -5,6 +5,10 @@ veya M3U aboneliğini ekler.
 
 ## Özellikler
 - Xtream Codes girişi (sunucu / kullanıcı / şifre) ve M3U URL desteği, birden fazla kayıtlı liste
+- **Telefonla ekleme (QR):** Liste ekranında QR kod çıkar. Telefonla okutunca TV'de çalışan yerel sunucunun
+  sayfası açılır (`http://<cihaz-ip>:8686`). Sunucu, kullanıcı adı ve şifre telefondan girilir; bilgiler
+  doğrulanır, TV'ye kaydedilir ve liste otomatik açılır. Ekrandaki 4 haneli kod olmadan ekleme yapılamaz.
+  Telefon ve cihaz aynı ağda olmalı.
 - Canlı TV, Filmler, Diziler (sezon ve bölüm), Favoriler, Son İzlenenler
 - Kategoriler ve anlık arama
 - ExoPlayer (Media3): HLS (.m3u8), MPEG-TS (.ts), MP4/MKV; hata olursa otomatik tekrar dener
