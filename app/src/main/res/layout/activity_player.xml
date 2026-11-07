@@ -24,6 +24,18 @@
         <TextView android:id="@+id/btnNext" style="@style/NavBtn" android:text="▶" android:textSize="22sp" />
     </LinearLayout>
 
+    <!-- CH+/CH- ile açılan yarı şeffaf kanal listesi -->
+    <LinearLayout android:id="@+id/channelPanel" android:layout_width="380dp" android:layout_height="match_parent"
+        android:layout_gravity="start" android:orientation="vertical" android:background="#D90B0F1A"
+        android:paddingTop="16dp" android:paddingLeft="10dp" android:paddingRight="10dp" android:visibility="gone">
+        <TextView android:id="@+id/tvPanelTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingLeft="8dp" android:paddingBottom="8dp" android:textSize="15sp" android:textStyle="bold"
+            android:textColor="@color/muted" android:singleLine="true" />
+        <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvChannels"
+            android:layout_width="match_parent" android:layout_height="match_parent" android:clipToPadding="false"
+            android:paddingBottom="16dp" />
+    </LinearLayout>
+
     <TextView android:id="@+id/tvError" android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="center" android:textColor="#FF8899" android:textSize="16sp" android:gravity="center"
         android:padding="24dp" android:visibility="gone" />

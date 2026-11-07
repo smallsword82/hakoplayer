@@ -19,6 +19,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.activity.OnBackPressedCallback
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.SimpleItemAnimator
 import coil.load
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -49,6 +53,16 @@ class PlayerActivity : AppCompatActivity() {
     )
     private val resizeNames = arrayOf("Sığdır", "Uzat", "Yakınlaştır")
 
+    // CH+/CH- ile açılan kanal listesi
+    private lateinit var channelPanel: View
+    private lateinit var rvChannels: RecyclerView
+    private lateinit var panelAdapter: ItemAdapter
+    private val hidePanel = Runnable { hideChannelPanel() }
+    private val panelBack = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = hideChannelPanel()
+    }
+    private val panelVisible get() = ::channelPanel.isInitialized && channelPanel.visibility == View.VISIBLE
+
     private val current get() = Session.queue.getOrNull(Session.queueIndex)
     private val isLive get() = current?.kind == Kind.LIVE
 
@@ -69,6 +83,8 @@ class PlayerActivity : AppCompatActivity() {
         view.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v ->
             if (v == View.VISIBLE) showOverlay(autoHide = false) else if (!isLive) overlay.visibility = View.GONE
         })
+
+        setupChannelPanel()
 
         player = Players.build(this, isLive).also { p ->
                 view.player = p
@@ -198,6 +214,71 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    // ---------- Kanal listesi (CH+/CH-) ----------
+
+    private fun setupChannelPanel() {
+        channelPanel = findViewById(R.id.channelPanel)
+        rvChannels = findViewById(R.id.rvChannels)
+        val favKeys = Session.playlist?.let { pl -> store.favorites(pl.id).map { it.key }.toHashSet() } ?: hashSetOf()
+        panelAdapter = ItemAdapter(false, { it.key in favKeys }, { _, pos -> pickChannel(pos) }, { _, _ -> })
+        rvChannels.layoutManager = LinearLayoutManager(this)
+        rvChannels.adapter = panelAdapter
+        (rvChannels.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
+        onBackPressedDispatcher.addCallback(this, panelBack)
+    }
+
+    private fun showChannelPanel(move: Int) {
+        if (!isLive || Session.queue.size <= 1) return
+        if (!panelVisible) {
+            panelAdapter.items = Session.queue
+            panelAdapter.activeKey = current?.key
+            findViewById<TextView>(R.id.tvPanelTitle).text = "Kanallar (${Session.queue.size})"
+            overlay.visibility = View.GONE
+            view.hideController()
+            view.useController = false
+            channelPanel.visibility = View.VISIBLE
+            panelBack.isEnabled = true
+            focusPanelRow(Session.queueIndex)
+        } else {
+            val focused = rvChannels.focusedChild?.let { rvChannels.getChildAdapterPosition(it) } ?: Session.queueIndex
+            focusPanelRow((focused + move).coerceIn(0, Session.queue.size - 1))
+        }
+        bumpPanelTimer()
+    }
+
+    private fun focusPanelRow(pos: Int) {
+        val lm = rvChannels.layoutManager as LinearLayoutManager
+        val v = lm.findViewByPosition(pos)
+        if (v != null) { v.requestFocus(); return }
+        // Görünmüyorsa ortaya kaydırıp çizilince odakla
+        lm.scrollToPositionWithOffset(pos, rvChannels.height / 3)
+        rvChannels.post { lm.findViewByPosition(pos)?.requestFocus() }
+    }
+
+    private fun bumpPanelTimer() {
+        handler.removeCallbacks(hidePanel)
+        handler.postDelayed(hidePanel, 8000)
+    }
+
+    private fun hideChannelPanel() {
+        handler.removeCallbacks(hidePanel)
+        if (!::channelPanel.isInitialized) return
+        channelPanel.visibility = View.GONE
+        panelBack.isEnabled = false
+        view.useController = true
+        view.requestFocus()
+    }
+
+    private fun pickChannel(pos: Int) {
+        hideChannelPanel()
+        if (pos !in Session.queue.indices) return
+        if (pos != Session.queueIndex) {
+            Session.queueIndex = pos
+            retries = 0
+            play()
+        } else showOverlay(autoHide = true)
+    }
+
     private fun cycleResize() {
         resizeIdx = (resizeIdx + 1) % resizeModes.size
         view.resizeMode = resizeModes[resizeIdx]
@@ -205,11 +286,29 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Kanal listesi açıkken: CH± imleci gezdirir, yön tuşları ve OK listede çalışır
+        if (panelVisible) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                bumpPanelTimer()
+                when (event.keyCode) {
+                    KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { showChannelPanel(-1); return true }
+                    KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { showChannelPanel(+1); return true }
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> return true
+                    KeyEvent.KEYCODE_MENU -> { hideChannelPanel(); return true }
+                }
+            }
+            return super.dispatchKeyEvent(event)
+        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             val controllerHidden = !view.isControllerFullyVisible
             when (event.keyCode) {
-                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> { zap(-1); return true }
-                KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> { zap(+1); return true }
+                // Canlı yayında CH+/CH-: şeffaf kanal listesini aç (diğerlerinde doğrudan geç)
+                KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_PAGE_UP -> {
+                    if (isLive && Session.queue.size > 1) showChannelPanel(0) else zap(-1); return true
+                }
+                KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_PAGE_DOWN -> {
+                    if (isLive && Session.queue.size > 1) showChannelPanel(0) else zap(+1); return true
+                }
                 KeyEvent.KEYCODE_DPAD_UP -> if (isLive && controllerHidden) { zap(-1); return true }
                 KeyEvent.KEYCODE_DPAD_DOWN -> if (isLive && controllerHidden) { zap(+1); return true }
                 KeyEvent.KEYCODE_MENU -> { cycleResize(); return true }
