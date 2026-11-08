@@ -116,7 +116,7 @@ class PlayerActivity : AppCompatActivity() {
 
     private val playerListener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) = handleError(error)
-        override fun onTracksChanged(tracks: Tracks) = refreshBottomBar()
+        override fun onTracksChanged(tracks: Tracks) { refreshBottomBar(); checkAudio(tracks) }
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_READY) { retries = 0; tvError.visibility = View.GONE }
             if (state == Player.STATE_ENDED && !isLive) zap(+1, wrap = false)
@@ -474,6 +474,20 @@ class PlayerActivity : AppCompatActivity() {
             pw.showAtLocation(view, android.view.Gravity.NO_GRAVITY, x, y)
         } else pw.showAtLocation(view, android.view.Gravity.BOTTOM or android.view.Gravity.END, (24 * dp).toInt(), (90 * dp).toInt())
         focusRow?.post { focusRow?.requestFocus() }
+    }
+
+    /** Ses gelmiyorsa nedenini söyle: yayında ses yok mu, yoksa ses biçimi cihazda çözülemiyor mu */
+    private fun checkAudio(tracks: Tracks) {
+        if (tracks.groups.isEmpty()) return
+        val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        val msg = when {
+            tracks.groups.none { it.type == C.TRACK_TYPE_VIDEO } -> return
+            audio.isEmpty() -> "Bu yayında ses parçası yok"
+            audio.none { g -> (0 until g.length).any { g.isTrackSupported(it) } } ->
+                "Ses biçimi bu cihazda çözülemiyor (${audio.first().getTrackFormat(0).sampleMimeType ?: "?"})"
+            else -> return
+        }
+        Toast.makeText(this, "🔇 $msg", Toast.LENGTH_LONG).show()
     }
 
     private fun trackName(f: androidx.media3.common.Format, kind: String): String =

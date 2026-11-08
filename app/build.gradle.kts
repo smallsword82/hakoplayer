@@ -5,7 +5,7 @@ plugins {
 
 import java.util.Properties
 
-// Release imzası: proje kökünde keystore.properties varsa onu kullanır (git'e eklenmez)
+// Release imzasÄ±: proje kÃ¶kÃ¼nde keystore.properties varsa onu kullanÄ±r (git'e eklenmez)
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.exists()) f.inputStream().use { load(it) }
@@ -19,8 +19,10 @@ android {
         applicationId = "com.hako.player"
         minSdk = 21
         targetSdk = 35
-        versionCode = 10
-        versionName = "2.3.0"
+        versionCode = 11
+        versionName = "2.3.1"
+        // TV box ve telefonlar ARM: FFmpeg kütüphanesinin x86 kopyaları APK'ya girmesin
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
 
     signingConfigs {
@@ -34,11 +36,11 @@ android {
 
     buildTypes {
         release {
-            // R8: kod küçültme + optimizasyon (daha küçük ve hızlı APK)
+            // R8: kod kÃ¼Ã§Ã¼ltme + optimizasyon (daha kÃ¼Ã§Ã¼k ve hÄ±zlÄ± APK)
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // keystore.properties yoksa (geliştirme) debug anahtarıyla imzalanır
+            // keystore.properties yoksa (geliÅŸtirme) debug anahtarÄ±yla imzalanÄ±r
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
@@ -57,6 +59,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
+    // MP2, AC-3 vb. cihazda çözücüsü olmayan ses biçimleri için FFmpeg (Jellyfin derlemesi, Media3 1.5 uyumlu)
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")

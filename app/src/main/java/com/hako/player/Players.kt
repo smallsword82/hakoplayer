@@ -44,7 +44,8 @@ object Players {
             .setConstantBitrateSeekingEnabled(true)
         val renderers = DefaultRenderersFactory(ctx)
             .setEnableDecoderFallback(true)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            // Önce cihazın kendi çözücüleri; çözemediği ses biçiminde (ör. MP2) FFmpeg devreye girer
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         // Hızlı açılış: canlıda 0.5 sn, film/dizide 1 sn veri gelince oynat (varsayılan 2.5 sn)
         val startMs = if (live) 500 else 1_000
         val loadControl = DefaultLoadControl.Builder()
