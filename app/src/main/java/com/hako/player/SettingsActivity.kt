@@ -35,6 +35,9 @@ class SettingsActivity : AppCompatActivity() {
         toggle("Açılışta son listeyi otomatik yükle", { Settings.autoLoad }) { Settings.autoLoad = it }
         toggle("Açılışta son izlenen kanalı oynat", { Settings.autoPlayLast }) { Settings.autoPlayLast = it }
         toggle("Canlı TV'de ilk kanalı önizlemede aç", { Settings.previewFirstLive }) { Settings.previewFirstLive = it }
+        choice("Görüntü oranı", listOf("Otomatik" to "fit", "16:9" to "16:9", "16:10" to "16:10", "4:3" to "4:3",
+            "21:9" to "21:9", "5:4" to "5:4", "Ekranı doldur" to "fill", "Yakınlaştır" to "zoom"),
+            { Settings.aspect }) { Settings.aspect = it }
         choice("Saat formatı", listOf("24 saat" to true, "12 saat (AM/PM)" to false), { Settings.clock24 }) { Settings.clock24 = it }
         choice("Kanal ve film sıralaması", listOf("Sunucu sırası" to false, "A'dan Z'ye" to true), { Settings.sortAz }) {
             Settings.sortAz = it

@@ -6,11 +6,13 @@ import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.OptIn
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.PlaybackException
@@ -43,17 +45,11 @@ class PlayerActivity : AppCompatActivity() {
     private val hideOverlay = Runnable { overlay.visibility = View.GONE }
     private var epgJob: Job? = null
     private var retries = 0
-    private var resizeIdx = 0
     private var lastZapAt = 0L
     private val startPending = Runnable { play() }
     private val retryRunnable = Runnable { player?.let { it.prepare(); it.playWhenReady = true } }
     private var digits = ""
     private val digitJump = Runnable { jumpToNumber() }
-    private val resizeModes = intArrayOf(
-        AspectRatioFrameLayout.RESIZE_MODE_FIT, AspectRatioFrameLayout.RESIZE_MODE_FILL,
-        AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-    )
-    private val resizeNames = arrayOf("Sığdır", "Uzat", "Yakınlaştır")
 
     // Tam ekran şeffaf liste: OK / Sol ile kanallar, ikinci Sol ile kategoriler
     private lateinit var channelPanel: View
@@ -103,6 +99,7 @@ class PlayerActivity : AppCompatActivity() {
         })
 
         setupChannelPanel()
+        view.post { applyAspect() } // kayıtlı görüntü oranı
 
         // Önizlemedeki canlı yayın devredildiyse yeniden bağlanmadan devam et
         val adopted = if (isLive) Players.take(current?.url) else Players.take(null)
@@ -403,10 +400,47 @@ class PlayerActivity : AppCompatActivity() {
         } else showOverlay(autoHide = true)
     }
 
+    /** Görüntü oranı seçenekleri: (ayar değeri, ekranda görünen ad) */
+    private val aspects = listOf(
+        "fit" to "Otomatik (yayının kendi oranı)", "16:9" to "16:9", "16:10" to "16:10", "4:3" to "4:3",
+        "21:9" to "21:9 (sinema)", "5:4" to "5:4", "fill" to "Ekranı doldur (uzat)", "zoom" to "Yakınlaştır (kırp)",
+    )
+
+    /** ⤢ / MENU: oran listesini açar; seçim kaydedilir ve tüm yayınlarda geçerli olur */
     private fun cycleResize() {
-        resizeIdx = (resizeIdx + 1) % resizeModes.size
-        view.resizeMode = resizeModes[resizeIdx]
-        Toast.makeText(this, "Görüntü: ${resizeNames[resizeIdx]}", Toast.LENGTH_SHORT).show()
+        val cur = aspects.indexOfFirst { it.first == Settings.aspect }.coerceAtLeast(0)
+        AlertDialog.Builder(this).setTitle("Görüntü oranı")
+            .setSingleChoiceItems(aspects.map { it.second }.toTypedArray(), cur) { d, i ->
+                Settings.aspect = aspects[i].first
+                applyAspect()
+                d.dismiss()
+            }.show()
+    }
+
+    /** Sabit oranda (16:9, 4:3...) görüntü alanı o orana göre ekrana ortalanır ve görüntü bu alana yayılır */
+    private fun applyAspect() {
+        val a = Settings.aspect
+        val lp = view.layoutParams as android.widget.FrameLayout.LayoutParams
+        val parts = a.split(':').mapNotNull { it.toFloatOrNull() }
+        if (parts.size == 2 && parts[1] > 0) {
+            val r = parts[0] / parts[1]
+            val root = view.parent as View
+            val w = root.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+            val h = root.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+            if (w.toFloat() / h > r) { lp.height = h; lp.width = (h * r).toInt() }
+            else { lp.width = w; lp.height = (w / r).toInt() }
+            lp.gravity = android.view.Gravity.CENTER
+            view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FILL
+        } else {
+            lp.width = ViewGroup.LayoutParams.MATCH_PARENT; lp.height = ViewGroup.LayoutParams.MATCH_PARENT
+            view.resizeMode = when (a) {
+                "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                "zoom" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+        }
+        view.layoutParams = lp
+        findViewById<TextView>(R.id.btnAspect).text = if (a == "fit") "⤢" else "⤢ ${aspects.first { it.first == a }.second.substringBefore(' ')}"
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
