@@ -12,6 +12,7 @@ class App : Application(), ImageLoaderFactory {
         super.onCreate()
         Net.cacheDir = cacheDir
         Settings.init(this)
+        NavSounds.install(this)
         // Oynatıcı kayıtları yayın adresini (içinde kullanıcı adı/şifre) logcat'e yazabilir: kapat
         androidx.media3.common.util.Log.setLogLevel(androidx.media3.common.util.Log.LOG_LEVEL_OFF)
         Thread { try { Net.pruneCache() } catch (_: Exception) { } }.start()

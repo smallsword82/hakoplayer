@@ -12,10 +12,12 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.OptIn
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -99,6 +101,8 @@ class PlayerActivity : AppCompatActivity() {
         })
 
         setupChannelPanel()
+        // Alt bar: ⚙ yerine Görüntü oranı / Ses / Altyazı / Hız düğmeleri
+        setupBottomBar()
         view.post { applyAspect() } // kayıtlı görüntü oranı
 
         // Önizlemedeki canlı yayın devredildiyse yeniden bağlanmadan devam et
@@ -112,6 +116,7 @@ class PlayerActivity : AppCompatActivity() {
 
     private val playerListener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) = handleError(error)
+        override fun onTracksChanged(tracks: Tracks) = refreshBottomBar()
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_READY) { retries = 0; tvError.visibility = View.GONE }
             if (state == Player.STATE_ENDED && !isLive) zap(+1, wrap = false)
@@ -406,27 +411,118 @@ class PlayerActivity : AppCompatActivity() {
         "21:9" to "21:9 (sinema)", "5:4" to "5:4", "fill" to "Ekranı doldur (uzat)", "zoom" to "Yakınlaştır (kırp)",
     )
 
-    /** ⤢ / MENU: oran listesini açar; seçim kaydedilir ve tüm yayınlarda geçerli olur */
-    private fun cycleResize() {
+    /** Görüntü oranı listesi; seçim kaydedilir ve tüm yayınlarda geçerli olur */
+    private fun cycleResize(anchor: View? = barAspect) {
         val cur = aspects.indexOfFirst { it.first == Settings.aspect }.coerceAtLeast(0)
-        AlertDialog.Builder(this).setTitle("Görüntü oranı")
-            .setSingleChoiceItems(aspects.map { it.second }.toTypedArray(), cur) { d, i ->
-                Settings.aspect = aspects[i].first
-                applyAspect()
-                d.dismiss()
-            }.show()
+        popupMenu(anchor, "Görüntü oranı", aspects.map { (k, name) ->
+            name to { Settings.aspect = k; applyAspect() }
+        }, checked = cur)
+    }
+
+    private var menuPopup: android.widget.PopupWindow? = null
+
+    /**
+     * Basılan alt bar düğmesinin hemen üstünde, yukarı doğru açılan yarı saydam menü.
+     * checked: seçili satır (✓ ile işaretlenir ve odak oraya gelir).
+     */
+    private fun popupMenu(anchor: View?, title: String, rows: List<Pair<String, () -> Unit>>, checked: Int = -1) {
+        menuPopup?.dismiss()
+        val dp = resources.displayMetrics.density
+        val box = object : android.widget.LinearLayout(this) {
+            // Açılır menü ayrı penceredir: geçiş sesleri burada da çalsın
+            override fun dispatchKeyEvent(e: KeyEvent): Boolean { NavSounds.key(context, e); return super.dispatchKeyEvent(e) }
+        }.apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundResource(R.drawable.bg_popup)
+            setPadding((8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
+        }
+        box.addView(TextView(this).apply {
+            text = title; textSize = 13f; setTextColor(0xFF8B95B5.toInt())
+            setPadding((14 * dp).toInt(), (6 * dp).toInt(), (14 * dp).toInt(), (6 * dp).toInt())
+        })
+        val pw = android.widget.PopupWindow(box, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        var focusRow: View? = null
+        rows.forEachIndexed { i, (label, action) ->
+            val tv = TextView(this).apply {
+                text = (if (checked >= 0) (if (i == checked) "✓  " else "     ") else "") + label
+                textSize = 17f; setTextColor(0xFFE8ECF8.toInt())
+                minWidth = (240 * dp).toInt()
+                setPadding((14 * dp).toInt(), (10 * dp).toInt(), (20 * dp).toInt(), (10 * dp).toInt())
+                setBackgroundResource(R.drawable.bg_item)
+                isFocusable = true; isClickable = true
+                setOnClickListener { pw.dismiss(); action(); refreshBottomBar() }
+            }
+            box.addView(tv)
+            if (i == checked.coerceAtLeast(0)) focusRow = tv
+        }
+        // Menü açıkken oynatıcı paneli kendiliğinden kapanmasın
+        view.controllerShowTimeoutMs = 0
+        pw.setOnDismissListener {
+            if (menuPopup === pw) menuPopup = null
+            view.controllerShowTimeoutMs = 8000
+            if (view.isControllerFullyVisible) { view.showController(); anchor?.requestFocus() }
+        }
+        menuPopup = pw
+        box.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        val loc = IntArray(2)
+        if (anchor != null && anchor.isShown) {
+            anchor.getLocationOnScreen(loc)
+            // Düğmeyle ortalı (ekrandan taşmadan), düğmenin hemen üstünde
+            val x = (loc[0] + anchor.width / 2 - box.measuredWidth / 2)
+                .coerceIn((8 * dp).toInt(), (view.width - box.measuredWidth - (8 * dp).toInt()).coerceAtLeast(0))
+            val y = (loc[1] - box.measuredHeight - (8 * dp).toInt()).coerceAtLeast((8 * dp).toInt())
+            pw.showAtLocation(view, android.view.Gravity.NO_GRAVITY, x, y)
+        } else pw.showAtLocation(view, android.view.Gravity.BOTTOM or android.view.Gravity.END, (24 * dp).toInt(), (90 * dp).toInt())
+        focusRow?.post { focusRow?.requestFocus() }
+    }
+
+    private fun trackName(f: androidx.media3.common.Format, kind: String): String =
+        f.label ?: f.language?.let { Locale(it).displayLanguage.replaceFirstChar { c -> c.uppercase() } } ?: kind
+
+    /** Ses dili / altyazı seçimi (altyazıda "Kapalı" seçeneği de var) */
+    private fun pickTrack(anchor: View, type: Int, kind: String) {
+        val p = player ?: return
+        val groups: List<Tracks.Group> = p.currentTracks.groups.filter { it.type == type }
+        val opts = mutableListOf<Pair<String, () -> Unit>>()
+        var checked = -1
+        if (type == C.TRACK_TYPE_TEXT) {
+            if (groups.none { it.isSelected }) checked = 0
+            opts += "Kapalı" to {
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(type, true).build()
+            }
+        }
+        groups.forEach { g ->
+            for (i in 0 until g.length) {
+                if (!g.isTrackSupported(i)) continue
+                if (g.isTrackSelected(i) && checked < 0) checked = opts.size
+                opts += trackName(g.getTrackFormat(i), "$kind ${opts.size + 1}") to {
+                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(type, false)
+                        .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i)).build()
+                }
+            }
+        }
+        popupMenu(anchor, kind, opts, checked)
+    }
+
+    private fun pickSpeed(anchor: View) {
+        val p = player ?: return
+        val speeds = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+        val cur = speeds.indexOfFirst { it == p.playbackParameters.speed }
+        popupMenu(anchor, "Oynatma hızı", speeds.map { s -> "${s}x" to { p.setPlaybackSpeed(s) } }, checked = cur)
     }
 
     /** Sabit oranda (16:9, 4:3...) görüntü alanı o orana göre ekrana ortalanır ve görüntü bu alana yayılır */
     private fun applyAspect() {
         val a = Settings.aspect
-        val lp = view.layoutParams as android.widget.FrameLayout.LayoutParams
+        // Yalnızca görüntü alanı boyutlanır; oynatıcı paneli (alt bar) tam genişlikte kalır
+        val frame = view.findViewById<View>(androidx.media3.ui.R.id.exo_content_frame) ?: return
+        val lp = frame.layoutParams as android.widget.FrameLayout.LayoutParams
         val parts = a.split(':').mapNotNull { it.toFloatOrNull() }
         if (parts.size == 2 && parts[1] > 0) {
             val r = parts[0] / parts[1]
-            val root = view.parent as View
-            val w = root.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
-            val h = root.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+            val w = view.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+            val h = view.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
             if (w.toFloat() / h > r) { lp.height = h; lp.width = (h * r).toInt() }
             else { lp.width = w; lp.height = (w / r).toInt() }
             lp.gravity = android.view.Gravity.CENTER
@@ -439,8 +535,62 @@ class PlayerActivity : AppCompatActivity() {
                 else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
             }
         }
-        view.layoutParams = lp
+        frame.layoutParams = lp
         findViewById<TextView>(R.id.btnAspect).text = if (a == "fit") "⤢" else "⤢ ${aspects.first { it.first == a }.second.substringBefore(' ')}"
+        refreshBottomBar()
+    }
+
+    // ---------- Oynatıcı alt barı: Görüntü oranı / Ses / Altyazı / Hız (⚙ yerine) ----------
+
+    private var barAspect: TextView? = null
+    private var barAudio: TextView? = null
+    private var barText: TextView? = null
+    private var barSpeed: TextView? = null
+
+    private fun setupBottomBar() {
+        val bar = view.findViewById<ViewGroup>(androidx.media3.ui.R.id.exo_basic_controls) ?: return
+        view.findViewById<View>(androidx.media3.ui.R.id.exo_settings)?.visibility = View.GONE
+        view.setShowSubtitleButton(false)
+        val dp = resources.displayMetrics.density
+        fun btn(onClick: (View) -> Unit) = TextView(this).apply {
+            textSize = 15f; setTextColor(0xFFE8ECF8.toInt())
+            gravity = android.view.Gravity.CENTER
+            setPadding((14 * dp).toInt(), (8 * dp).toInt(), (14 * dp).toInt(), (8 * dp).toInt())
+            setBackgroundResource(R.drawable.bg_item)
+            isFocusable = true; isClickable = true
+            setOnClickListener { onClick(it) }
+        }.also {
+            bar.addView(it, bar.childCount, android.widget.LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginEnd = (6 * dp).toInt(); gravity = android.view.Gravity.CENTER_VERTICAL })
+        }
+        barAudio = btn { pickTrack(it, C.TRACK_TYPE_AUDIO, "Ses") }
+        barText = btn { pickTrack(it, C.TRACK_TYPE_TEXT, "Altyazı") }
+        barSpeed = btn { pickSpeed(it) }
+        barAspect = btn { cycleResize(it) }
+        refreshBottomBar()
+    }
+
+    /** Düğme yazıları seçili değeri gösterir; parçası olmayan düğmeler gizlenir */
+    private fun refreshBottomBar() {
+        val p = player
+        val groups = p?.currentTracks?.groups ?: emptyList()
+        val audio = groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        val subs = groups.filter { it.type == C.TRACK_TYPE_TEXT }
+        barAspect?.text = "⤢  ${aspects.first { it.first == Settings.aspect }.second.substringBefore(" (")}"
+        barAudio?.apply {
+            visibility = if (audio.sumOf { it.length } > 1) View.VISIBLE else View.GONE
+            val cur = audio.flatMap { g -> (0 until g.length).filter { g.isTrackSelected(it) }.map { g.getTrackFormat(it) } }.firstOrNull()
+            text = "🔊  ${cur?.let { trackName(it, "Ses") } ?: "Ses"}"
+        }
+        barText?.apply {
+            visibility = if (subs.isNotEmpty()) View.VISIBLE else View.GONE
+            text = "CC  ${if (subs.any { it.isSelected }) "Altyazı açık" else "Altyazı kapalı"}"
+        }
+        barSpeed?.apply {
+            visibility = if (isLive) View.GONE else View.VISIBLE
+            text = "⏱  ${p?.playbackParameters?.speed ?: 1f}x"
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -493,7 +643,11 @@ class PlayerActivity : AppCompatActivity() {
                     view.post { view.findViewById<View>(androidx.media3.ui.R.id.exo_play_pause)?.requestFocus() }
                     return true
                 }
-                KeyEvent.KEYCODE_MENU -> { cycleResize(); return true }
+                KeyEvent.KEYCODE_MENU -> {
+                    // Menü tuşu: oynatıcı panelini aç, odak alt bardaki Görüntü oranı düğmesine
+                    view.useController = true; view.showController()
+                    view.post { barAspect?.requestFocus() }; return true
+                }
                 in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> if (isLive) { onDigit(event.keyCode - KeyEvent.KEYCODE_0); return true }
                 KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_GUIDE -> { showOverlay(true); return true }
                 // Canlı yayında OK: şeffaf kanal listesini aç (tek kanal varsa bilgi çubuğunu göster).

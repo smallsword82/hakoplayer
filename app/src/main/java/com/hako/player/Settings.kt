@@ -61,6 +61,8 @@ object Settings {
     var autoPlayLast: Boolean get() = bool("auto_play", false); set(v) = put("auto_play", v)
     /** Canlı TV'ye girince listedeki ilk kanal önizlemede kendiliğinden açılsın */
     var previewFirstLive: Boolean get() = bool("preview_first_live", true); set(v) = put("preview_first_live", v)
+    /** Kumandayla menülerde gezinirken kısa ses çal */
+    var navSounds: Boolean get() = bool("nav_sounds", false); set(v) = put("nav_sounds", v)
     /** Görüntü oranı: fit | fill | zoom | "16:9" | "16:10" | "4:3" | "21:9" | "5:4" */
     var aspect: String get() = str("aspect", "fit"); set(v) = put("aspect", v)
     /** Canlı yayın formatı: auto | ts | m3u8 */
