@@ -73,6 +73,7 @@ class DashboardActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        Players.take(null) // tam ekrandan buraya dönüldüyse devredilen oynatıcıyı kapat (bağlantı açık kalmasın)
         handler.post(tick)
         val src = Session.source
         val pl = Session.playlist

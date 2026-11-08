@@ -157,17 +157,19 @@ class HomeActivity : AppCompatActivity() {
         // Tam ekran oynatıcı bağlantısını kapatana kadar kısa bekle (tek bağlantılı hesaplar).
         if (previewItem != null && section in previewSections) {
             val back = Session.queue.getOrNull(Session.queueIndex)?.takeIf { it.kind == Kind.LIVE } ?: previewItem
+            // Tam ekran oynatıcısı devredildiyse aynı yayın kesilmeden önizlemede sürer
+            val adopt = Players.take(back?.url)
             resumePreview = Runnable {
                 back ?: return@Runnable
-                startPreview(back)
+                startPreview(back, adopt = adopt)
                 // Odağı oynayan kanala taşı
                 val pos = shown.indexOfFirst { it.key == back.key }
                 if (pos >= 0 && rvItems.hasFocus()) {
                     rvItems.scrollToPosition(pos)
                     rvItems.post { rvItems.layoutManager?.findViewByPosition(pos)?.requestFocus() }
                 }
-            }.also { rvItems.postDelayed(it, 700) }
-        }
+            }.also { if (adopt != null) it.run() else rvItems.postDelayed(it, 700) }
+        } else Players.take(null) // kullanılmayan devredilmiş oynatıcıyı bırak
         // Favori yıldızları / son izlenenler güncel olsun
         if (section == Section.FAV || section == Section.RECENT) showSection(section)
         else rvItems.adapter?.let { it.notifyItemRangeChanged(0, it.itemCount) }
@@ -214,40 +216,44 @@ class HomeActivity : AppCompatActivity() {
 
     // ---------- Canlı TV önizleme ----------
 
-    private fun ensurePreviewPlayer(): ExoPlayer? {
+    private val previewListener = object : Player.Listener {
+        override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_READY) {
+                previewRetries = 0
+                findViewById<View>(R.id.tvPreviewMsg).visibility = View.GONE
+            }
+        }
+        override fun onPlayerError(error: PlaybackException) {
+            val p = previewPlayer ?: return
+            if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                p.seekToDefaultPosition(); p.prepare(); return
+            }
+            if (previewRetries < 2) {
+                previewRetries++
+                rvItems.postDelayed({ previewPlayer?.let { it.prepare(); it.playWhenReady = true } }, 800L * previewRetries)
+                return
+            }
+            findViewById<TextView>(R.id.tvPreviewMsg).apply {
+                text = "Oynatılamadı (${error.errorCodeName})"; visibility = View.VISIBLE
+            }
+        }
+    }
+
+    /** adopt: tam ekrandan devralınan, zaten oynayan oynatıcı */
+    private fun ensurePreviewPlayer(adopt: ExoPlayer? = null): ExoPlayer? {
         val pv = previewView ?: return null
-        previewPlayer?.let { return it }
-        return Players.build(this, live = true).also { p ->
+        previewPlayer?.let { if (adopt == null || it === adopt) return it; releasePreview() }
+        return (adopt ?: Players.build(this, live = true)).also { p ->
             pv.player = p
-            p.addListener(object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_READY) {
-                        previewRetries = 0
-                        findViewById<View>(R.id.tvPreviewMsg).visibility = View.GONE
-                    }
-                }
-                override fun onPlayerError(error: PlaybackException) {
-                    if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-                        p.seekToDefaultPosition(); p.prepare(); return
-                    }
-                    if (previewRetries < 2) {
-                        previewRetries++
-                        rvItems.postDelayed({ previewPlayer?.let { it.prepare(); it.playWhenReady = true } }, 800L * previewRetries)
-                        return
-                    }
-                    findViewById<TextView>(R.id.tvPreviewMsg).apply {
-                        text = "Oynatılamadı (${error.errorCodeName})"; visibility = View.VISIBLE
-                    }
-                }
-            })
+            p.addListener(previewListener)
             previewPlayer = p
         }
     }
 
     /** record = false: kendiliğinden açılan önizleme son izlenenlere yazılmaz */
-    private fun startPreview(item: Item, record: Boolean = true) {
+    private fun startPreview(item: Item, record: Boolean = true, adopt: ExoPlayer? = null) {
         val url = item.url ?: return
-        val p = ensurePreviewPlayer() ?: return
+        val p = ensurePreviewPlayer(adopt) ?: return
         previewItem = item
         previewRetries = 0
         listAdapter.activeKey = item.key
@@ -256,10 +262,13 @@ class HomeActivity : AppCompatActivity() {
         Session.queue = q
         Session.queueIndex = q.indexOfFirst { it.key == item.key }.coerceAtLeast(0)
 
-        p.stop()
-        p.setMediaItem(Players.mediaItem(url))
-        p.prepare()
-        p.playWhenReady = true
+        if (adopt != null) Players.revive(p) // yayın sürüyor: yeniden bağlanma yok
+        else {
+            p.stop()
+            p.setMediaItem(Players.mediaItem(url))
+            p.prepare()
+            p.playWhenReady = true
+        }
 
         findViewById<TextView>(R.id.tvPreviewMsg).apply { text = ""; visibility = View.GONE }
         findViewById<TextView>(R.id.tvPreviewName).text = item.name
@@ -292,7 +301,7 @@ class HomeActivity : AppCompatActivity() {
     /** Oynatıcıyı bırakır (bağlantı kapanır); önizlenen kanal hatırlanır */
     private fun releasePreview() {
         previewEpgJob?.cancel()
-        previewPlayer?.release()
+        previewPlayer?.let { it.removeListener(previewListener); it.release() }
         previewPlayer = null
         previewView?.player = null
     }
@@ -312,8 +321,15 @@ class HomeActivity : AppCompatActivity() {
     }
 
     private fun goFullscreen(item: Item) {
-        // Tek bağlantı hakkı olan hesaplar için önizlemeyi tam ekrandan önce kapat
-        releasePreview()
+        val p = previewPlayer
+        if (p != null && item.kind == Kind.LIVE && previewItem?.key == item.key) {
+            // Aynı kanal: oynatıcı tam ekrana devredilir, yayın kesilmez
+            previewEpgJob?.cancel()
+            p.removeListener(previewListener)
+            previewView?.player = null
+            previewPlayer = null
+            Players.give(p)
+        } else releasePreview() // tek bağlantı hakkı olan hesaplar için önizlemeyi önce kapat
         val q = shown.filter { it.kind == item.kind && it.url != null }
         Session.queue = q
         Session.queueIndex = q.indexOfFirst { it.key == item.key }.coerceAtLeast(0)

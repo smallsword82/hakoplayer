@@ -16,7 +16,26 @@ import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 /** Tam ekran oynatıcı ve canlı TV önizlemesi için ortak ExoPlayer ayarları */
 @OptIn(UnstableApi::class)
 object Players {
-    fun build(ctx: Context, live: Boolean): ExoPlayer {
+    /**
+     * Önizleme ⇄ tam ekran geçişinde devredilen canlı oynatıcı. Yayın kapatılıp yeniden açılmaz,
+     * yalnızca görüntünün çizildiği pencere değişir. Alan taraf [take] ile alır; uymazsa bırakır.
+     */
+    private var handoff: ExoPlayer? = null
+
+    fun give(p: ExoPlayer) { handoff?.takeIf { it !== p }?.release(); handoff = p }
+
+    /** Devredilen oynatıcı bu adresi oynuyorsa onu verir; değilse serbest bırakır ve null döner */
+    fun take(url: String?): ExoPlayer? {
+        val p = handoff ?: return null
+        handoff = null
+        if (url != null && p.currentMediaItem?.localConfiguration?.uri?.toString() == url) return p
+        p.release()
+        return null
+    }
+
+    fun build(ctx0: Context, live: Boolean): ExoPlayer {
+        // Oynatıcı ekranlar arasında devredilebildiği için aktivite değil uygulama bağlamı kullanılır
+        val ctx = ctx0.applicationContext
         val dsf = OkHttpDataSource.Factory(Net.client).setUserAgent(Net.UA)
         val extractors = DefaultExtractorsFactory()
             // Anahtar kareyi beklemeden başlat + erişim birimlerini erken algıla (daha hızlı ilk görüntü)
@@ -36,6 +55,12 @@ object Players {
             .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dsf, extractors))
             .build()
+    }
+
+    /** Devralınan oynatıcı hata/boşta durumundaysa yeniden hazırla */
+    fun revive(p: ExoPlayer) {
+        if (p.playerError != null || p.playbackState == androidx.media3.common.Player.STATE_IDLE) p.prepare()
+        p.playWhenReady = true
     }
 
     fun mediaItem(url: String): MediaItem = MediaItem.Builder().setUri(url).apply {

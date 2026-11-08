@@ -104,39 +104,46 @@ class PlayerActivity : AppCompatActivity() {
 
         setupChannelPanel()
 
-        player = Players.build(this, isLive).also { p ->
-                view.player = p
-                p.addListener(object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) = handleError(error)
-                    override fun onPlaybackStateChanged(state: Int) {
-                        if (state == Player.STATE_READY) { retries = 0; tvError.visibility = View.GONE }
-                        if (state == Player.STATE_ENDED && !isLive) zap(+1, wrap = false)
-                    }
-                })
-            }
-        play()
+        // Önizlemedeki canlı yayın devredildiyse yeniden bağlanmadan devam et
+        val adopted = if (isLive) Players.take(current?.url) else Players.take(null)
+        player = (adopted ?: Players.build(this, isLive)).also { p ->
+            view.player = p
+            p.addListener(playerListener)
+        }
+        if (adopted != null) { Players.revive(adopted); play(reload = false) } else play()
     }
 
-    private fun play() {
+    private val playerListener = object : Player.Listener {
+        override fun onPlayerError(error: PlaybackException) = handleError(error)
+        override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_READY) { retries = 0; tvError.visibility = View.GONE }
+            if (state == Player.STATE_ENDED && !isLive) zap(+1, wrap = false)
+        }
+    }
+
+    /** reload = false: oynatıcı zaten bu yayını oynuyor (önizlemeden devralındı), yalnızca ekran hazırlanır */
+    private fun play(reload: Boolean = true) {
         val item = current ?: return
         val url = item.url ?: return
         val p = player ?: return
         handler.removeCallbacks(startPending)
         handler.removeCallbacks(retryRunnable)
-        saveProgress()
         tvError.visibility = View.GONE
-        // Önceki yayının bağlantısını hemen kapat (tek bağlantı hakkı olan hesaplarda önemli)
-        p.stop()
-        p.setMediaItem(Players.mediaItem(url))
-        if (!isLive) {
-            val pos = store.position(url)
-            if (pos > 30_000) {
-                p.seekTo(pos)
-                Toast.makeText(this, "Kaldığınız yerden devam ediliyor", Toast.LENGTH_SHORT).show()
+        if (reload) {
+            saveProgress()
+            // Önceki yayının bağlantısını hemen kapat (tek bağlantı hakkı olan hesaplarda önemli)
+            p.stop()
+            p.setMediaItem(Players.mediaItem(url))
+            if (!isLive) {
+                val pos = store.position(url)
+                if (pos > 30_000) {
+                    p.seekTo(pos)
+                    Toast.makeText(this, "Kaldığınız yerden devam ediliyor", Toast.LENGTH_SHORT).show()
+                }
             }
+            p.prepare()
+            p.playWhenReady = true
         }
-        p.prepare()
-        p.playWhenReady = true
         // Canlı yayında play/pause paneli yalnızca Sağ ile açılır: kanal değiştirirken ortaya çıkıp yön tuşlarını kapmasın
         view.useController = !isLive
         // Canlı yayında önceki/sonraki ve 10 sn atlama düğmeleri anlamsız; oynat/duraklat ve ayarlar kalır
@@ -494,7 +501,17 @@ class PlayerActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         saveProgress()
-        player?.pause()
+        val p = player
+        if (p != null && isFinishing && isLive) {
+            // Geri ile önizlemeye dönülüyor: yayın kesilmeden önizlemede sürsün
+            handler.removeCallbacksAndMessages(null)
+            p.removeListener(playerListener)
+            view.player = null
+            player = null
+            Players.give(p)
+            return
+        }
+        p?.pause()
     }
 
     override fun onResume() {
