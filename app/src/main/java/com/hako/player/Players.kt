@@ -46,10 +46,13 @@ object Players {
             .setEnableDecoderFallback(true)
             // Önce cihazın kendi çözücüleri; çözemediği ses biçiminde (ör. MP2) FFmpeg devreye girer
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-        // Hızlı açılış: canlıda 0.5 sn, film/dizide 1 sn veri gelince oynat (varsayılan 2.5 sn)
-        val startMs = if (live) 500 else 1_000
+        // Açılış: canlıda ayardaki süre (varsayılan 0.5 sn), film/dizide 1 sn veri gelince oynat (Media3 varsayılanı 2.5 sn)
+        val startMs = if (live) Settings.liveStartMs else 1_000
+        // Takılmadan sonra yeniden başlamak için: başlangıcın iki katı, 1-3 sn arası
+        val rebufferMs = if (live) (startMs * 2).coerceIn(1_000, 3_000) else 2_000
+        val maxMs = Settings.bufferSec * 1_000
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 60_000, startMs, if (live) 1_500 else 2_000)
+            .setBufferDurationsMs(minOf(15_000, maxMs), maxMs, startMs, rebufferMs)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
         return ExoPlayer.Builder(ctx, renderers)

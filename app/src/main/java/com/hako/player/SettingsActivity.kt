@@ -51,6 +51,12 @@ class SettingsActivity : AppCompatActivity() {
             // Kanal adresleri yeni formatla yeniden oluşturulsun (liste diskten okunur, tekrar indirilmez)
             Session.playlist?.let { p -> Session.source = Session.sourceFor(p) }
         }
+        choice("Kanal açılış hızı (başlangıç tamponu)",
+            listOf("Çok hızlı (0.3 sn)" to 300, "Hızlı (0.5 sn)" to 500, "Dengeli (1.5 sn)" to 1500, "Kararlı (3 sn)" to 3000),
+            { Settings.liveStartMs }) { Settings.liveStartMs = it }
+        choice("Tampon bellek süresi",
+            listOf("15 sn" to 15, "30 sn" to 30, "1 dk" to 60, "2 dk" to 120, "5 dk (canlıyı duraklatma için)" to 300),
+            { Settings.bufferSec }) { Settings.bufferSec = it }
         row("User-Agent", { Settings.userAgent.ifBlank { "Varsayılan" } }) {
             val et = EditText(this).apply {
                 setText(Settings.userAgent); hint = Net.DEFAULT_UA; setSingleLine()

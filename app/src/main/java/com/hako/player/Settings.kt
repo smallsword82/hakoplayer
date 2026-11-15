@@ -65,6 +65,10 @@ object Settings {
     var navSounds: Boolean get() = bool("nav_sounds", false); set(v) = put("nav_sounds", v)
     /** Görüntü oranı: fit | fill | zoom | "16:9" | "16:10" | "4:3" | "21:9" | "5:4" */
     var aspect: String get() = str("aspect", "fit"); set(v) = put("aspect", v)
+    /** Canlı yayında oynatmaya başlamak için gereken veri (ms): düşük = hızlı kanal açılışı, yüksek = daha az takılma */
+    var liveStartMs: Int get() = sp.getInt("live_start_ms", 500); set(v) = sp.edit().putInt("live_start_ms", v).apply()
+    /** Önden tamponlanacak en fazla süre (sn). Canlı yayın duraklatılınca bu kadar geriden izlenebilir. */
+    var bufferSec: Int get() = sp.getInt("buffer_sec", 60); set(v) = sp.edit().putInt("buffer_sec", v).apply()
     /** Canlı yayın formatı: auto | ts | m3u8 */
     var liveFormat: String get() = str("live_format", "auto"); set(v) = put("live_format", v)
     var clock24: Boolean get() = bool("clock24", true); set(v) = put("clock24", v)

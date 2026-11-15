@@ -247,11 +247,12 @@ class XtreamSource(private val p: Playlist) : Source {
             val user = p.user; val pass = p.pass; val ext = liveExt
             val list: List<Item> = Net.cached("$api&action=${action(kind, false)}", refreshedAt) { inp ->
                 when (kind) {
-                    Kind.LIVE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "num", "is_adult")) { f, i ->
+                    Kind.LIVE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "num", "is_adult", "tv_archive", "tv_archive_duration")) { f, i ->
                         val id = f["stream_id"].orEmpty()
                         Item(id, f["name"].orEmpty(), f["stream_icon"].orNull(), f["category_id"].orEmpty(), Kind.LIVE,
                             "$base/live/$user/$pass/$id.$ext", epgId = id, num = f["num"]?.toIntOrNull() ?: (i + 1),
-                            adult = isAdultFlag(f["is_adult"]))
+                            adult = isAdultFlag(f["is_adult"]),
+                            archive = if (f["tv_archive"] == "1") (f["tv_archive_duration"]?.toIntOrNull() ?: 1).coerceAtLeast(1) else 0)
                     }
                     Kind.MOVIE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "container_extension", "rating", "is_adult")) { f, i ->
                         val id = f["stream_id"].orEmpty()

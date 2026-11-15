@@ -2,14 +2,17 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="wrap_content"
     android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/bg_item"
-    android:focusable="true" android:clickable="true" android:paddingLeft="8dp" android:paddingRight="8dp" android:paddingTop="5dp" android:paddingBottom="5dp" android:layout_margin="1dp">
-    <TextView android:id="@+id/num" android:layout_width="34dp" android:layout_height="wrap_content"
-        android:textColor="@color/muted" android:textSize="13sp" />
+    android:focusable="true" android:clickable="true" android:paddingLeft="2dp" android:paddingRight="6dp" android:paddingTop="5dp" android:paddingBottom="5dp" android:layout_margin="1dp">
+    <!-- Sıra no: sabit 34dp yerine yazı kadar yer (en az 18dp, sağa yaslı) -->
+    <TextView android:id="@+id/num" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:minWidth="18dp" android:gravity="end" android:layout_marginRight="6dp"
+        android:textColor="@color/muted" android:textSize="12sp" />
     <ImageView android:id="@+id/logo" android:layout_width="44dp" android:layout_height="24dp"
         android:scaleType="fitCenter" android:background="#22000000" />
+    <!-- Tüm adlar aynı boyutta (14sp); sığmayan ad seçili satırda kayarak gösterilir -->
     <TextView android:id="@+id/name" android:layout_width="0dp" android:layout_weight="1"
-        android:layout_height="wrap_content" android:layout_marginLeft="10dp" android:singleLine="true"
-        android:ellipsize="end" android:textSize="15sp" />
+        android:layout_height="wrap_content" android:layout_marginLeft="7dp" android:singleLine="true"
+        android:ellipsize="end" android:marqueeRepeatLimit="marquee_forever" android:textSize="14sp" />
     <TextView android:id="@+id/star" android:layout_width="wrap_content" android:layout_height="wrap_content"
-        android:text="★" android:textColor="#FFCC4D" android:visibility="gone" />
+        android:layout_marginLeft="4dp" android:text="★" android:textColor="#FFCC4D" android:visibility="gone" />
 </LinearLayout>

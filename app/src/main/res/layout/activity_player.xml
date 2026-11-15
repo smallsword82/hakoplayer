@@ -49,6 +49,33 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- Dizi bölümü bitmek üzereyken: sonraki bölüm kartı + geri sayım -->
+    <LinearLayout android:id="@+id/nextCard" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end" android:layout_marginEnd="40dp" android:layout_marginBottom="120dp"
+        android:orientation="horizontal" android:background="@drawable/bg_popup" android:padding="12dp"
+        android:visibility="gone">
+        <ImageView android:id="@+id/nextPoster" android:layout_width="176dp" android:layout_height="99dp"
+            android:scaleType="centerCrop" android:background="#33000000" />
+        <LinearLayout android:layout_width="280dp" android:layout_height="wrap_content" android:orientation="vertical"
+            android:layout_marginStart="14dp">
+            <TextView android:id="@+id/nextCount" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:textSize="13sp" android:textColor="@color/muted" />
+            <TextView android:id="@+id/nextTitle" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textSize="17sp" android:textStyle="bold" android:textColor="#FFFFFF" android:maxLines="2"
+                android:ellipsize="end" android:layout_marginTop="2dp" />
+            <ProgressBar android:id="@+id/nextProgress" style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent" android:layout_height="4dp" android:layout_marginTop="8dp"
+                android:progressTint="@color/accent" android:progressBackgroundTint="#33FFFFFF" />
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:layout_marginTop="10dp">
+                <TextView android:id="@+id/nextPlay" style="@style/NavBtn" android:paddingTop="8dp"
+                    android:paddingBottom="8dp" android:text="▶  Şimdi oynat" />
+                <TextView android:id="@+id/nextCancel" style="@style/NavBtn" android:paddingTop="8dp"
+                    android:paddingBottom="8dp" android:layout_marginStart="8dp" android:text="İptal" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
     <TextView android:id="@+id/tvError" android:layout_width="wrap_content" android:layout_height="wrap_content"
         android:layout_gravity="center" android:textColor="#FF8899" android:textSize="16sp" android:gravity="center"
         android:padding="24dp" android:visibility="gone" />

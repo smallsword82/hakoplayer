@@ -71,6 +71,13 @@ class ItemAdapter(
         val num: TextView = v.findViewById(R.id.num)
         val logo: ImageView = v.findViewById(R.id.logo)
         val star: TextView = v.findViewById(R.id.star)
+        init {
+            // İmleç gelen satırda uzun ad "..." yerine kayarak tamamen okunur
+            v.setOnFocusChangeListener { _, f ->
+                name.ellipsize = if (f) android.text.TextUtils.TruncateAt.MARQUEE else android.text.TextUtils.TruncateAt.END
+                name.isSelected = f
+            }
+        }
     }
 
     override fun onCreateViewHolder(p: ViewGroup, t: Int) = VH(
@@ -81,6 +88,8 @@ class ItemAdapter(
         val it = items[i]
         h.name.text = it.name
         h.num.text = if (grid) (it.extra?.let { r -> "★ $r" } ?: "") else (i + 1).toString()
+        // Sıra no sütunu listedeki en uzun numara kadar: logolar hizalı kalır, boşa yer gitmez
+        if (!grid) h.num.minWidth = h.num.paint.measureText("8".repeat(items.size.toString().length)).toInt() + 1
         h.star.visibility = if (isFav(it)) View.VISIBLE else View.GONE
         h.itemView.isSelected = it.key == activeKey
         if (it.logo != null) h.logo.load(it.logo) { error(android.R.color.transparent) }

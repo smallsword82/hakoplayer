@@ -119,7 +119,8 @@ class PlayerActivity : AppCompatActivity() {
         override fun onTracksChanged(tracks: Tracks) { refreshBottomBar(); checkAudio(tracks) }
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_READY) { retries = 0; tvError.visibility = View.GONE }
-            if (state == Player.STATE_ENDED && !isLive) zap(+1, wrap = false)
+            // Bölüm bitti: iptal edilmediyse sonraki bölüm. Film bitince başka filme geçilmez.
+            if (state == Player.STATE_ENDED && nextEpisode != null && !nextCancelled) playNextEpisode()
         }
     }
 
@@ -133,8 +134,8 @@ class PlayerActivity : AppCompatActivity() {
         tvError.visibility = View.GONE
         if (reload) {
             saveProgress()
-            // Önceki yayının bağlantısını hemen kapat (tek bağlantı hakkı olan hesaplarda önemli)
-            p.stop()
+            // Eski yayın setMediaItem ile hemen bırakılır (bağlantı kapanır); stop() çağrılmaz:
+            // çözücüler kapatılıp yeniden açılmadığı için kanal daha hızlı açılır
             p.setMediaItem(Players.mediaItem(url))
             if (!isLive) {
                 val pos = store.position(url)
@@ -149,8 +150,12 @@ class PlayerActivity : AppCompatActivity() {
         // Canlı yayında play/pause paneli yalnızca Sağ ile açılır: kanal değiştirirken ortaya çıkıp yön tuşlarını kapmasın
         view.useController = !isLive
         // Canlı yayında önceki/sonraki ve 10 sn atlama düğmeleri anlamsız; oynat/duraklat ve ayarlar kalır
-        view.setShowPreviousButton(!isLive); view.setShowNextButton(!isLive)
+        // Ortadaki ⏮ ⏭ hiç gösterilmez (bölüm geçişi alt bardaki "Sonraki bölüm" ile)
+        view.setShowPreviousButton(false); view.setShowNextButton(false)
         view.setShowRewindButton(!isLive); view.setShowFastForwardButton(!isLive)
+        hideNextCard(); nextCancelled = false
+        handler.removeCallbacks(nextTick)
+        if (nextEpisode != null) handler.postDelayed(nextTick, 1000)
         Session.playlist?.let { pl -> if (item.kind != Kind.EPISODE) store.addRecent(pl.id, item) }
         showOverlay(autoHide = true)
         loadEpg(item)
@@ -225,7 +230,9 @@ class PlayerActivity : AppCompatActivity() {
         val idx = Session.queueIndex + 1
         findViewById<TextView>(R.id.ovTitle).text = if (isLive) "$idx  ${item.name}" else item.name
         findViewById<ImageView>(R.id.ovLogo).load(item.logo)
-        val showZap = Session.queue.size > 1
+        // Üst bardaki ◀ ▶ yalnızca canlı TV'de (kanal değiştirme); film/dizide sadece ad görünür
+        val showZap = isLive && Session.queue.size > 1
+        findViewById<View>(R.id.btnAspect).visibility = if (isLive) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnPrev).visibility = if (showZap) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnNext).visibility = if (showZap) View.VISIBLE else View.GONE
         overlay.visibility = View.VISIBLE
@@ -554,12 +561,76 @@ class PlayerActivity : AppCompatActivity() {
         refreshBottomBar()
     }
 
+    // ---------- Sonraki bölüm: alt bar düğmesi + bitişe yakın geri sayımlı kart ----------
+
+    /** Dizide sezondaki bir sonraki bölüm (yoksa null) */
+    private val nextEpisode: Item?
+        get() = current?.takeIf { it.kind == Kind.EPISODE }
+            ?.let { Session.queue.getOrNull(Session.queueIndex + 1) }?.takeIf { it.kind == Kind.EPISODE && it.url != null }
+
+    /** Kullanıcı kartta "İptal" dedi: bu bölümün sonunda otomatik geçilmez */
+    private var nextCancelled = false
+    private val nextCard by lazy { findViewById<View>(R.id.nextCard) }
+    private val nextCardVisible get() = nextCard.visibility == View.VISIBLE
+
+    /** Kart, bölümün son bu kadar saniyesinde çıkar ve sıfıra kadar sayar */
+    private val countdownSec = 15
+
+    private val nextTick = object : Runnable {
+        override fun run() {
+            val p = player ?: return
+            val next = nextEpisode ?: return
+            handler.postDelayed(this, 500)
+            val dur = p.duration
+            if (dur <= 0 || dur == C.TIME_UNSET || dur < 3 * 60_000) return // süre bilinmiyor / çok kısa
+            val left = ((dur - p.currentPosition) / 1000).toInt()
+            when {
+                nextCancelled -> { if (left > countdownSec + 5) nextCancelled = false } // geri sarıldıysa yeniden sun
+                left in 0..countdownSec && p.isPlaying -> showNextCard(next, left)
+                left > countdownSec && nextCardVisible -> hideNextCard()
+            }
+        }
+    }
+
+    private fun showNextCard(next: Item, left: Int) {
+        val first = !nextCardVisible
+        if (first) {
+            findViewById<TextView>(R.id.nextTitle).text = next.name
+            findViewById<ImageView>(R.id.nextPoster).load(next.logo ?: current?.logo)
+            findViewById<android.widget.ProgressBar>(R.id.nextProgress).max = countdownSec
+            findViewById<View>(R.id.nextPlay).setOnClickListener { playNextEpisode() }
+            findViewById<View>(R.id.nextCancel).setOnClickListener { nextCancelled = true; hideNextCard() }
+            nextCard.visibility = View.VISIBLE
+            view.hideController()
+        }
+        findViewById<TextView>(R.id.nextCount).text = "Sonraki bölüm  •  $left sn içinde başlıyor"
+        findViewById<android.widget.ProgressBar>(R.id.nextProgress).progress = countdownSec - left
+        if (first) findViewById<View>(R.id.nextPlay).requestFocus()
+        if (left <= 0) playNextEpisode()
+    }
+
+    private fun hideNextCard() {
+        if (nextCard.visibility != View.VISIBLE) return
+        nextCard.visibility = View.GONE
+        view.requestFocus()
+    }
+
+    private fun playNextEpisode() {
+        if (nextEpisode == null) return
+        hideNextCard()
+        saveProgress()
+        Session.queueIndex++
+        retries = 0
+        play()
+    }
+
     // ---------- Oynatıcı alt barı: Görüntü oranı / Ses / Altyazı / Hız (⚙ yerine) ----------
 
     private var barAspect: TextView? = null
     private var barAudio: TextView? = null
     private var barText: TextView? = null
     private var barSpeed: TextView? = null
+    private var barNext: TextView? = null
 
     private fun setupBottomBar() {
         val bar = view.findViewById<ViewGroup>(androidx.media3.ui.R.id.exo_basic_controls) ?: return
@@ -582,6 +653,7 @@ class PlayerActivity : AppCompatActivity() {
         barText = btn { pickTrack(it, C.TRACK_TYPE_TEXT, "Altyazı") }
         barSpeed = btn { pickSpeed(it) }
         barAspect = btn { cycleResize(it) }
+        barNext = btn { playNextEpisode() }
         refreshBottomBar()
     }
 
@@ -600,6 +672,11 @@ class PlayerActivity : AppCompatActivity() {
         barText?.apply {
             visibility = if (subs.isNotEmpty()) View.VISIBLE else View.GONE
             text = "CC  ${if (subs.any { it.isSelected }) "Altyazı açık" else "Altyazı kapalı"}"
+        }
+        barNext?.apply {
+            val next = nextEpisode
+            visibility = if (next != null) View.VISIBLE else View.GONE
+            text = "⏭  Sonraki bölüm"
         }
         barSpeed?.apply {
             visibility = if (isLive) View.GONE else View.VISIBLE
@@ -631,6 +708,20 @@ class PlayerActivity : AppCompatActivity() {
                 }
             }
             return super.dispatchKeyEvent(event)
+        }
+        // Sonraki bölüm kartı açıkken Geri: kartı kapat (otomatik geçiş iptal), oynatıcıdan çıkma
+        if (nextCardVisible && event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.action == KeyEvent.ACTION_UP) { nextCancelled = true; hideNextCard() }
+            return true
+        }
+        // Kaydırma çubuğu: tek basış 10 sn; basılı tutulunca adım giderek büyür (30 sn, 1 dk, 2 dk)
+        if (event.action == KeyEvent.ACTION_DOWN && (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+            (currentFocus as? androidx.media3.ui.DefaultTimeBar)?.setKeyTimeIncrement(when {
+                event.repeatCount < 10 -> 10_000L
+                event.repeatCount < 30 -> 30_000L
+                event.repeatCount < 60 -> 60_000L
+                else -> 120_000L
+            })
         }
         if (event.action == KeyEvent.ACTION_DOWN) {
             val controllerHidden = !view.isControllerFullyVisible

@@ -38,19 +38,20 @@ data class Item(
     val num: Int = 0,
     val extra: String? = null, // puan / yıl vb.
     val adult: Boolean = false, // sunucu "is_adult" işareti
+    val archive: Int = 0,       // geri izleme (catch-up) gün sayısı; 0 = yok
 ) {
     val key: String = "${kind.name}:$id"
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("name", name).put("logo", logo).put("cat", categoryId)
-        .put("kind", kind.name).put("url", url).put("epg", epgId).put("num", num).put("extra", extra).put("adult", adult)
+        .put("kind", kind.name).put("url", url).put("epg", epgId).put("num", num).put("extra", extra).put("adult", adult).put("arc", archive)
 
     companion object {
         fun from(o: JSONObject) = Item(
             o.getString("id"), o.optString("name"), o.optString("logo").ifEmpty { null },
             o.optString("cat"), Kind.valueOf(o.optString("kind", "LIVE")),
             o.optString("url").ifEmpty { null }, o.optString("epg").ifEmpty { null },
-            o.optInt("num"), o.optString("extra").ifEmpty { null }, o.optBoolean("adult"),
+            o.optInt("num"), o.optString("extra").ifEmpty { null }, o.optBoolean("adult"), o.optInt("arc"),
         )
     }
 }
