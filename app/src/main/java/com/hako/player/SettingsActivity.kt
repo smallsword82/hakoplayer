@@ -33,8 +33,46 @@ class SettingsActivity : AppCompatActivity() {
     private fun build() {
         header("Genel")
         toggle("Açılışta son listeyi otomatik yükle", { Settings.autoLoad }) { Settings.autoLoad = it }
-        toggle("Açılışta son izlenen kanalı oynat", { Settings.autoPlayLast }) { Settings.autoPlayLast = it }
-        toggle("Canlı TV'de ilk kanalı önizlemede aç", { Settings.previewFirstLive }) { Settings.previewFirstLive = it }
+        row("Açılışta oynat", {
+            when (Settings.startMode) {
+                "last" -> "Son izlenen kanal"
+                "channel" -> Session.playlist?.let { Settings.startChannel(it.id)?.name } ?: "Kanal seçilmedi"
+                else -> "Kapalı"
+            }
+        }) {
+            AlertDialog.Builder(this).setTitle("Açılışta oynat")
+                .setItems(arrayOf("Kapalı", "Son izlenen kanal", "Seçtiğim kanal…")) { _, w ->
+                    when (w) {
+                        0 -> Settings.startMode = "off"
+                        1 -> Settings.startMode = "last"
+                        else -> pickChannel { ch ->
+                            Settings.setStartChannel(Session.playlist!!.id, ch); Settings.startMode = "channel"
+                            Toast.makeText(this, "Açılışta: ${ch.name}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    refresh()
+                }.show()
+        }
+        row("Canlı TV'ye girince önizlemede aç", {
+            when (Settings.liveEntry) {
+                "first" -> "İlk kanal"
+                "channel" -> Session.playlist?.let { Settings.liveEntryChannel(it.id)?.name } ?: "Kanal seçilmedi"
+                else -> "Kapalı"
+            }
+        }) {
+            AlertDialog.Builder(this).setTitle("Canlı TV'ye girince")
+                .setItems(arrayOf("Kapalı", "Kategorinin ilk kanalı", "Seçtiğim kanal…")) { _, w ->
+                    when (w) {
+                        0 -> Settings.liveEntry = "off"
+                        1 -> Settings.liveEntry = "first"
+                        else -> pickChannel { ch ->
+                            Settings.setLiveEntryChannel(Session.playlist!!.id, ch); Settings.liveEntry = "channel"
+                            Toast.makeText(this, "Canlı TV'de: ${ch.name}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    refresh()
+                }.show()
+        }
         toggle("Menü geçiş sesleri", { Settings.navSounds }) { Settings.navSounds = it }
         choice("Görüntü oranı", listOf("Otomatik" to "fit", "16:9" to "16:9", "16:10" to "16:10", "4:3" to "4:3",
             "21:9" to "21:9", "5:4" to "5:4", "Ekranı doldur" to "fill", "Yakınlaştır" to "zoom"),
@@ -42,6 +80,27 @@ class SettingsActivity : AppCompatActivity() {
         choice("Saat formatı", listOf("24 saat" to true, "12 saat (AM/PM)" to false), { Settings.clock24 }) { Settings.clock24 = it }
         choice("Kanal ve film sıralaması", listOf("Sunucu sırası" to false, "A'dan Z'ye" to true), { Settings.sortAz }) {
             Settings.sortAz = it
+        }
+
+        header("Program rehberi (EPG)")
+        toggle("Sunucu EPG vermezse harici rehberi kullan (epgshare01)", { Settings.extEpg }) { Settings.extEpg = it }
+        row("EPG ülkeleri", {
+            val sel = Settings.epgCountries
+            (listOf("Türkiye") + ExtEpg.countries.keys.filter { it in sel && it != "TR" }.map { ExtEpg.countryNames[it] ?: it })
+                .joinToString(", ") + "  (diğerleri kanal açılınca)"
+        }) {
+            // Yalnızca kullanıcının listesinde kanalı olan ülkeler; Türkiye her zaman indirilir
+            val list = ExtEpg.countriesInList().filter { it != "TR" }
+            if (list.isEmpty()) {
+                Toast.makeText(this, "Listede başka ülke kanalı bulunamadı (önce Canlı TV'yi açın)", Toast.LENGTH_LONG).show()
+                return@row
+            }
+            val sel = Settings.epgCountries.toMutableSet()
+            AlertDialog.Builder(this).setTitle("Açılışta hazırlanacak ülkeler")
+                .setMultiChoiceItems(list.map { ExtEpg.countryNames[it] ?: it }.toTypedArray(),
+                    list.map { it in sel }.toBooleanArray()) { _, w, on -> if (on) sel += list[w] else sel -= list[w] }
+                .setPositiveButton("Tamam") { _, _ -> Settings.epgCountries = sel; refresh() }
+                .setNegativeButton("Vazgeç", null).show()
         }
 
         header("Oynatıcı")
@@ -231,6 +290,32 @@ class SettingsActivity : AppCompatActivity() {
         upd(); refreshers += upd
         r.setOnClickListener { onClick(); refresh() }
         list.addView(r)
+    }
+
+    /** Açılış kanalı: önce kategori, sonra kanal seçilir (gizli / kilitli kategoriler listelenmez) */
+    private fun pickChannel(onPick: (Item) -> Unit) {
+        val src = Session.source; val pl = Session.playlist
+        if (src == null || pl == null) {
+            Toast.makeText(this, "Önce bir liste açın", Toast.LENGTH_SHORT).show(); return
+        }
+        lifecycleScope.launch {
+            val cats = try { src.categories(Kind.LIVE) } catch (_: Exception) { emptyList() }
+                .filter { it.id != "*" && it.count > 0 && !Parental.isCatHidden(pl.id, Kind.LIVE, it.id, it.name)
+                    && !Parental.isLocked(pl.id, Kind.LIVE, it.id, it.name) }
+            if (cats.isEmpty()) { Toast.makeText(this@SettingsActivity, "Kategori bulunamadı", Toast.LENGTH_SHORT).show(); return@launch }
+            AlertDialog.Builder(this@SettingsActivity).setTitle("Kategori seçin")
+                .setItems(cats.map { "${it.name}  (${it.count})" }.toTypedArray()) { _, ci ->
+                    lifecycleScope.launch {
+                        val all = try { src.items(Kind.LIVE) } catch (_: Exception) { emptyList() }
+                        val chans = all.filter { it.categoryId == cats[ci].id && it.url != null && !Parental.isItemLocked(pl.id, it) }
+                        if (chans.isEmpty()) return@launch
+                        AlertDialog.Builder(this@SettingsActivity).setTitle(cats[ci].name)
+                            .setItems(chans.map { it.name }.toTypedArray()) { _, k ->
+                                onPick(chans[k]); refresh()
+                            }.show()
+                    }
+                }.show()
+        }
     }
 
     private fun toggle(title: String, get: () -> Boolean, set: (Boolean) -> Unit) =

@@ -121,6 +121,13 @@ class PlayerActivity : AppCompatActivity() {
             if (state == Player.STATE_READY) { retries = 0; tvError.visibility = View.GONE }
             // Bölüm bitti: iptal edilmediyse sonraki bölüm. Film bitince başka filme geçilmez.
             if (state == Player.STATE_ENDED && nextEpisode != null && !nextCancelled) playNextEpisode()
+            // Sunucu bağlantıyı kesti: canlı yayına yeniden bağlan (görüntü donmasın)
+            if (state == Player.STATE_ENDED && isLive) player?.let {
+                if (!Players.onLiveEnded(it, current?.url)) {
+                    tvError.text = "Yayın kesildi\n${current?.name ?: ""}\n\nYukarı/Aşağı ile kanal değiştirin"
+                    tvError.visibility = View.VISIBLE
+                }
+            }
         }
     }
 
@@ -235,6 +242,8 @@ class PlayerActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnAspect).visibility = if (isLive) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnPrev).visibility = if (showZap) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnNext).visibility = if (showZap) View.VISIBLE else View.GONE
+        // Bilgi çubuğu her açıldığında program bilgisi güncel saate göre yeniden alınır
+        if (overlay.visibility != View.VISIBLE && item.kind == Kind.LIVE) loadEpg(item)
         overlay.visibility = View.VISIBLE
         handler.removeCallbacks(hideOverlay)
         if (autoHide) handler.postDelayed(hideOverlay, 5000)
@@ -246,7 +255,7 @@ class PlayerActivity : AppCompatActivity() {
         epgJob?.cancel()
         if (item.kind != Kind.LIVE) return
         epgJob = lifecycleScope.launch {
-            val list = Session.source?.shortEpg(item).orEmpty()
+            val list = ExtEpg.shortEpg(item)
             val f = Settings.timeFormat()
             ep.text = list.take(2).mapIndexed { i, e ->
                 "${if (i == 0) "Şimdi" else "Sonra"}  ${f.format(Date(e.start))}-${f.format(Date(e.end))}  ${e.title}"

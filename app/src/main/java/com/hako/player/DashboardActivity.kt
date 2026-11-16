@@ -165,10 +165,13 @@ class DashboardActivity : AppCompatActivity() {
     }
 
     private suspend fun maybeAutoPlay(src: Source) {
-        if (autoPlayed || !Settings.autoPlayLast) return
+        val mode = Settings.startMode
+        if (autoPlayed || mode == "off") return
         autoPlayed = true
         val pl = Session.playlist ?: return
-        val last = store.recents(pl.id).firstOrNull { it.kind == Kind.LIVE } ?: return
+        // Son izlenen kanal ya da ayarlarda seçilen kanal
+        val last = (if (mode == "channel") Settings.startChannel(pl.id)
+            else store.recents(pl.id).firstOrNull { it.kind == Kind.LIVE }) ?: return
         if (Parental.isItemLocked(pl.id, last) || Parental.isItemInHiddenCat(pl.id, last)) return
         val live = src.items(Kind.LIVE)
         val idx = live.indexOfFirst { it.id == last.id }
@@ -176,7 +179,10 @@ class DashboardActivity : AppCompatActivity() {
         val q = live.filter { it.categoryId == last.categoryId }
         Session.queue = q
         Session.queueIndex = q.indexOfFirst { it.id == last.id }.coerceAtLeast(0)
-        startActivity(Intent(this, PlayerActivity::class.java))
+        // Altta Canlı TV ekranı: Geri ile önizlemeli ekrana (kanalın kategorisi, aynı yayın) dönülür
+        startActivities(arrayOf(
+            Intent(this, HomeActivity::class.java).putExtra("section", "LIVE").putExtra("resume_live", true),
+            Intent(this, PlayerActivity::class.java)))
     }
 
     private fun openSection(sec: String) {

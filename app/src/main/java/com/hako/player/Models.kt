@@ -81,6 +81,8 @@ object Session {
         if (src is XtreamSource) src.login() else src.items(Kind.LIVE)
         playlist = p; source = src
         catNames.clear(); adultCats.clear()
+        ExtEpg.resetServerProbe()
+        Players.resetFallback() // yeni listede tüm kanallar yine MPEG-TS ile başlar
         Parental.unlocked = false
         store.setLastPlaylist(p.id)
         return src

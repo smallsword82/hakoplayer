@@ -305,7 +305,7 @@ class XtreamSource(private val p: Playlist) : Source {
     override suspend fun shortEpg(item: Item): List<EpgEntry> {
         if (item.kind != Kind.LIVE) return emptyList()
         return try {
-            val o = JSONObject(Net.get("$api&action=get_short_epg&stream_id=${item.id}&limit=3"))
+            val o = JSONObject(Net.get("$api&action=get_short_epg&stream_id=${item.id}&limit=6"))
             val a = o.optJSONArray("epg_listings") ?: return emptyList()
             (0 until a.length()).map { i ->
                 val e = a.getJSONObject(i)

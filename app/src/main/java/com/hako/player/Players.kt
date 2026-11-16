@@ -28,7 +28,7 @@ object Players {
     fun take(url: String?): ExoPlayer? {
         val p = handoff ?: return null
         handoff = null
-        if (url != null && p.currentMediaItem?.localConfiguration?.uri?.toString() == url) return p
+        if (url != null && p.currentMediaItem?.localConfiguration?.uri?.toString().let { it == url || it == liveUrl(url) }) return p
         p.release()
         return null
     }
@@ -61,13 +61,64 @@ object Players {
             .build()
     }
 
+
+    /**
+     * "Otomatik" yayın formatında sunucu bir kanalın MPEG-TS bağlantısını kestiyse o kanal bu oturum boyunca HLS ile açılır.
+     * HLS'te yayın parça parça istendiği için kesinti görüntüye yansımaz; MPEG-TS ise kanalları daha hızlı açar.
+     * Uygulama her açılışta (ve liste değişince) yine MPEG-TS ile başlar.
+     */
+    /** Yalnızca kesinti yaşanan kanallar HLS'e geçer; diğerleri MPEG-TS ile hızlı açılmaya devam eder */
+    private val hlsChannels: MutableSet<String> = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
+
+    /** Yeni liste / yeni oturum: tüm kanallar yine MPEG-TS ile başlar */
+    fun resetFallback() = hlsChannels.clear()
+
+    private fun canFallback(url: String) = Settings.liveFormat == "auto" && Session.playlist?.type == "xtream" &&
+        url.contains("/live/") && url.endsWith(".ts")
+
+    /** Oynatılacak gerçek adres: kanal HLS'e geçtiyse Xtream canlı adresinin uzantısı .m3u8 olur */
+    fun liveUrl(url: String): String = if (url in hlsChannels && canFallback(url)) url.dropLast(3) + ".m3u8" else url
+
+    /** Canlı yayın bitti (sunucu kesti): bu kanal ilk kez kesildiyse HLS'e geç, değilse aynı adrese yeniden bağlan */
+    fun onLiveEnded(p: ExoPlayer, url: String?): Boolean {
+        if (url != null && url !in hlsChannels && canFallback(url)) {
+            hlsChannels += url
+            p.setMediaItem(mediaItem(url))
+            p.prepare()
+            p.playWhenReady = true
+            return true
+        }
+        return reconnectLive(p)
+    }
+
+    /**
+     * Canlı yayın "bitti" (sunucu bağlantıyı kapattı): aynı adrese yeniden bağlanır.
+     * Bazı sunucular birkaç saniyelik veri gönderip bağlantıyı keser; eskiden görüntü burada donup kalıyordu.
+     * Yayın gerçekten kapalıysa sonsuz döngüye girmesin: 30 sn içinde 5 denemeden sonra false döner.
+     */
+    fun reconnectLive(p: ExoPlayer): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        reconnects.removeAll { now - it > 30_000 }
+        if (reconnects.size >= 5) return false
+        reconnects += now
+        val item = p.currentMediaItem ?: return false
+        p.setMediaItem(item)
+        p.prepare()
+        p.playWhenReady = true
+        return true
+    }
+    private val reconnects = ArrayList<Long>()
+
     /** Devralınan oynatıcı hata/boşta durumundaysa yeniden hazırla */
     fun revive(p: ExoPlayer) {
         if (p.playerError != null || p.playbackState == androidx.media3.common.Player.STATE_IDLE) p.prepare()
         p.playWhenReady = true
     }
 
-    fun mediaItem(url: String): MediaItem = MediaItem.Builder().setUri(url).apply {
-        if (url.contains(".m3u8", true)) setMimeType(MimeTypes.APPLICATION_M3U8)
-    }.build()
+    fun mediaItem(url0: String): MediaItem {
+        val url = liveUrl(url0)
+        return MediaItem.Builder().setUri(url).apply {
+            if (url.contains(".m3u8", true)) setMimeType(MimeTypes.APPLICATION_M3U8)
+        }.build()
+    }
 }

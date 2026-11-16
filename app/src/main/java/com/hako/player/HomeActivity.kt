@@ -82,6 +82,8 @@ class HomeActivity : AppCompatActivity() {
         super.onCreate(b)
         val s = Session.source; val p = Session.playlist
         if (s == null || p == null) { finish(); return }
+        // Harici program rehberi: Türkiye (ve seçilen ülkeler) arka planda hazırlansın
+        lifecycleScope.launch { ExtEpg.preload() }
         src = s; pl = p
         setContentView(R.layout.activity_home)
         store = Store(this)
@@ -110,6 +112,7 @@ class HomeActivity : AppCompatActivity() {
 
         navIds.forEach { (sec, id) -> findViewById<View>(id).setOnClickListener { showSection(sec) } }
         findViewById<View>(R.id.navBack).setOnClickListener { finish() } // ana sayfaya dön
+        findViewById<View>(R.id.navGuide).setOnClickListener { openGuide() }
         findViewById<View>(R.id.navReload).setOnClickListener {
             src.clearCache(); showSection(section)
             Toast.makeText(this, "Liste yenileniyor…", Toast.LENGTH_SHORT).show()
@@ -118,9 +121,10 @@ class HomeActivity : AppCompatActivity() {
         previewPanel = findViewById(R.id.previewPanel)
         previewView = findViewById(R.id.previewView)
         findViewById<View?>(R.id.previewBox)?.let { box ->
-            // 16:9 önizleme alanı
+            // 16:9 önizleme alanı; panel genişleyince (Favoriler / Son İzlenen) altta EPG'ye yer kalsın
             box.addOnLayoutChangeListener { v, l, _, r, _, _, _, _, _ ->
-                val h = (r - l) * 9 / 16
+                val panelH = previewPanel?.height ?: 0
+                val h = ((r - l) * 9 / 16).let { if (panelH > 0) minOf(it, (panelH * 0.58f).toInt()) else it }
                 if (h > 0 && v.layoutParams.height != h) v.post { v.layoutParams = v.layoutParams.apply { height = h } }
             }
         }
@@ -139,8 +143,9 @@ class HomeActivity : AppCompatActivity() {
             findViewById<TextView>(R.id.tvAccount).text = try { src.accountInfo() } catch (e: Exception) { pl.name }
         }
         val start = intent.getStringExtra("section")?.let { runCatching { Section.valueOf(it) }.getOrNull() } ?: Section.LIVE
+        resumeLive = intent.getBooleanExtra("resume_live", false)
         // Yatay (TV) düzende liste yüklenince odak ilk kategoriye geçsin
-        focusCatsOnLoad = !portrait
+        focusCatsOnLoad = !portrait && !resumeLive && !(start == Section.LIVE && Settings.liveEntry == "channel")
         findViewById<View>(navIds.getValue(start)).requestFocus()
         showSection(start)
     }
@@ -169,7 +174,7 @@ class HomeActivity : AppCompatActivity() {
                     rvItems.post { rvItems.layoutManager?.findViewByPosition(pos)?.requestFocus() }
                 }
             }.also { if (adopt != null) it.run() else rvItems.postDelayed(it, 700) }
-        } else Players.take(null) // kullanılmayan devredilmiş oynatıcıyı bırak
+        } else if (!resumeLive) Players.take(null) // kullanılmayan devredilmiş oynatıcıyı bırak
         // Favori yıldızları / son izlenenler güncel olsun
         if (section == Section.FAV || section == Section.RECENT) showSection(section)
         else rvItems.adapter?.let { it.notifyItemRangeChanged(0, it.itemCount) }
@@ -186,8 +191,23 @@ class HomeActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    /** Program rehberi: Canlı TV'deyse açık kategori ve önizlemedeki kanalla açılır */
+    private fun openGuide() {
+        val i = Intent(this, GuideActivity::class.java)
+        if (section == Section.LIVE) {
+            currentCat?.id?.takeIf { it != "*" }?.let { i.putExtra("cat", it) }
+            previewItem?.let { p -> i.putExtra("cat", p.categoryId).putExtra("key", p.key) }
+        }
+        startActivity(i)
+    }
+
     /** Kategorilerden sağa geçince odak karşıdaki satıra değil listenin başına gitsin */
     override fun dispatchKeyEvent(e: android.view.KeyEvent): Boolean {
+        // Kumandadaki Rehber / EPG tuşu
+        if (e.keyCode == android.view.KeyEvent.KEYCODE_GUIDE) {
+            if (e.action == android.view.KeyEvent.ACTION_UP) openGuide()
+            return true
+        }
         if (e.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT && rvCats.hasFocus()
             && rvItems.visibility == View.VISIBLE && (rvItems.adapter?.itemCount ?: 0) > 0) {
             if (e.action == android.view.KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
@@ -222,6 +242,8 @@ class HomeActivity : AppCompatActivity() {
                 previewRetries = 0
                 findViewById<View>(R.id.tvPreviewMsg).visibility = View.GONE
             }
+            // Sunucu bağlantıyı kesti: canlı yayına yeniden bağlan (görüntü donmasın)
+            if (state == Player.STATE_ENDED && previewItem?.kind == Kind.LIVE) previewPlayer?.let { if (!Players.onLiveEnded(it, previewItem?.url)) findViewById<TextView>(R.id.tvPreviewMsg).apply { text = "Yayın kesildi"; visibility = View.VISIBLE } }
         }
         override fun onPlayerError(error: PlaybackException) {
             val p = previewPlayer ?: return
@@ -283,12 +305,29 @@ class HomeActivity : AppCompatActivity() {
         ep.text = ""
         previewEpgJob?.cancel()
         previewEpgJob = lifecycleScope.launch {
-            val list = try { src.shortEpg(item) } catch (_: Exception) { emptyList() }
-            if (list.isEmpty()) { ep.text = "Program bilgisi yok"; return@launch }
-            val f = Settings.timeFormat()
-            ep.text = list.take(2).mapIndexed { i, e ->
-                "${if (i == 0) "Şimdi" else "Sonra"}   ${f.format(Date(e.start))} - ${f.format(Date(e.end))}\n${e.title}"
-            }.joinToString("\n\n")
+            // Program bitince (en geç dakikada bir) liste yenilenir: "▶ şu an" hep güncel kalır
+            while (true) {
+                val list = try { ExtEpg.shortEpg(item, 4) } catch (_: Exception) { emptyList() }
+                if (list.isEmpty()) { ep.text = "Program bilgisi yok"; return@launch }
+                val f = Settings.timeFormat()
+                // Her program tek satır: saat aralığı + ad. Oynayan program beyaz ve ▶ ile işaretli.
+                val now = System.currentTimeMillis()
+                val sb = android.text.SpannableStringBuilder()
+                list.take(4).forEachIndexed { i, e ->
+                    if (i > 0) sb.append('\n')
+                    val live = e.start <= now && now < e.end
+                    val title = if (e.title.length > 42) e.title.take(41).trimEnd() + "…" else e.title
+                    val from = sb.length
+                    sb.append(if (live) "▶ " else "    ").append(f.format(Date(e.start))).append("  ").append(title)
+                    if (live) {
+                        sb.setSpan(android.text.style.ForegroundColorSpan(0xFFFFFFFF.toInt()), from, sb.length, 0)
+                        sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), from, sb.length, 0)
+                    }
+                }
+                ep.text = sb
+                val nextChange = list.firstOrNull { it.end > now }?.end ?: (now + 60_000)
+                kotlinx.coroutines.delay((nextChange - now + 1_000).coerceIn(5_000, 60_000))
+            }
         }
     }
 
@@ -356,10 +395,10 @@ class HomeActivity : AppCompatActivity() {
         val grid = sec == Section.MOVIE || sec == Section.SERIES
         val landscape = resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT
         // Yatay düzen: film/dizide kategori kolonu dar, afişlere daha çok yer kalsın
-        val catWeight = if (sec == Section.LIVE) 0.65f else 0.36f
+        val catWeight = if (sec == Section.LIVE) 0.58f else 0.36f
         // Favoriler / Son İzlenenler'de kategori yok (yalnızca "Tümü"): sol kolon gizlenir
         rvCats.visibility = if (sec == Section.FAV || sec == Section.RECENT) View.GONE else View.VISIBLE
-        val listWeight = 0.85f
+        val listWeight = if (sec == Section.LIVE) 0.92f else 0.85f
         if (landscape) (rvCats.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { lp ->
             if (lp.weight != catWeight) { lp.weight = catWeight; rvCats.layoutParams = lp }
         }
@@ -409,10 +448,18 @@ class HomeActivity : AppCompatActivity() {
                     focusFirstCategory(10)
                 }
                 // Ayar açıksa ilk kanal önizlemede başlasın (yetişkin/kilitli kanallar atlanır)
-                if (sec == Section.LIVE && Settings.previewFirstLive && previewItem == null && previewView != null) {
-                    filterJob?.join() // "Tümü" listesi arka planda süzülüyorsa bitsin
-                    shown.firstOrNull { it.url != null && !Parental.isAdultItem(it) && !Parental.isItemLocked(pl.id, it) }
-                        ?.let { startPreview(it, record = false) }
+                if (sec == Section.LIVE && resumeLive) showResumedLive()
+                else if (sec == Section.LIVE && previewItem == null && previewView != null) {
+                    // Canlı TV'ye girince: ayarda seçilen kanal (kategorisiyle) ya da ilk kanal
+                    val entry = if (Settings.liveEntry != "channel") null
+                        else Settings.liveEntryChannel(pl.id)?.let { ch -> allItems.firstOrNull { it.key == ch.key } }
+                            ?.takeIf { it.url != null && !Parental.isItemLocked(pl.id, it) }
+                    if (entry != null) openInPreview(entry, null)
+                    else if (Settings.liveEntry != "off") {
+                        filterJob?.join() // "Tümü" listesi arka planda süzülüyorsa bitsin
+                        shown.firstOrNull { it.url != null && !Parental.isAdultItem(it) && !Parental.isItemLocked(pl.id, it) }
+                            ?.let { startPreview(it, record = false) }
+                    }
                 }
                 prefetchOthers()
             } catch (e: Exception) {
@@ -458,6 +505,29 @@ class HomeActivity : AppCompatActivity() {
             Toast.makeText(this, if (nowLocked) "🔒 ${c.name} kilitlendi" else "🔓 ${c.name} kilidi kaldırıldı", Toast.LENGTH_SHORT).show()
         }
         if (Parental.unlocked) doIt() else Parental.askPin(this, "Kategori kilidi") { computeLocks(); doIt() }
+    }
+
+    /** Açılış kanalından Geri ile gelindi: o kanalın kategorisi açılır, yayın önizlemede kesintisiz sürer */
+    private var resumeLive = false
+
+    private suspend fun showResumedLive() {
+        resumeLive = false
+        val cur = Session.queue.getOrNull(Session.queueIndex)?.takeIf { it.kind == Kind.LIVE && it.url != null }
+            ?: run { Players.take(null); return }
+        openInPreview(cur, Players.take(cur.url))
+    }
+
+    /** Kanalın kategorisini seçer, kanalı önizlemede açar ve imleci kanalın satırına taşır */
+    private suspend fun openInPreview(cur: Item, adopt: ExoPlayer?) {
+        catAdapter.items.firstOrNull { it.id == cur.categoryId }?.let { selectCategory(it) }
+        filterJob?.join()
+        focusCatsOnLoad = false
+        startPreview(cur, record = false, adopt = adopt)
+        val pos = shown.indexOfFirst { it.key == cur.key }
+        if (pos >= 0) {
+            rvItems.scrollToPosition(pos)
+            rvItems.post { rvItems.layoutManager?.findViewByPosition(pos)?.requestFocus() }
+        }
     }
 
     private fun selectCategory(c: Category) {

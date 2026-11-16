@@ -19,8 +19,8 @@ android {
         applicationId = "com.hako.player"
         minSdk = 21
         targetSdk = 35
-        versionCode = 12
-        versionName = "2.3.2"
+        versionCode = 13
+        versionName = "2.3.3"
         // TV box ve telefonlar ARM: FFmpeg kütüphanesinin x86 kopyaları APK'ya girmesin
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }

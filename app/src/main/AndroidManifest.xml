@@ -40,6 +40,7 @@
         <activity android:name=".SettingsActivity" />
         <activity android:name=".HomeActivity" android:windowSoftInputMode="stateHidden|adjustPan" />
         <activity android:name=".SeriesActivity" />
+        <activity android:name=".GuideActivity" />
         <activity
             android:name=".PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"

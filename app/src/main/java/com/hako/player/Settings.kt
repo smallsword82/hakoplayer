@@ -59,12 +59,26 @@ object Settings {
     var autoLoad: Boolean get() = bool("auto_load", true); set(v) = put("auto_load", v)
     /** Açılışta son izlenen kanalı otomatik oynat */
     var autoPlayLast: Boolean get() = bool("auto_play", false); set(v) = put("auto_play", v)
+    /** Açılışta oynat: "off" | "last" (son izlenen) | "channel" (seçilen kanal). Eski ayardan taşınır. */
+    var startMode: String get() = str("start_mode", if (autoPlayLast) "last" else "off"); set(v) = put("start_mode", v)
+    /** Liste başına açılışta oynatılacak kanal */
+    fun startChannel(pl: String): Item? = try { sp.getString("start_ch_$pl", null)?.let { Item.from(org.json.JSONObject(it)) } } catch (_: Exception) { null }
+    fun setStartChannel(pl: String, item: Item?) = sp.edit().apply { if (item == null) remove("start_ch_$pl") else putString("start_ch_$pl", item.toJson().toString()) }.apply()
     /** Canlı TV'ye girince listedeki ilk kanal önizlemede kendiliğinden açılsın */
     var previewFirstLive: Boolean get() = bool("preview_first_live", true); set(v) = put("preview_first_live", v)
+    /** Canlı TV'ye girince önizlemede açılan: "off" | "first" (kategorinin ilk kanalı) | "channel" (seçilen kanal) */
+    var liveEntry: String get() = str("live_entry", if (previewFirstLive) "first" else "off"); set(v) = put("live_entry", v)
+    fun liveEntryChannel(pl: String): Item? = try { sp.getString("live_ch_$pl", null)?.let { Item.from(org.json.JSONObject(it)) } } catch (_: Exception) { null }
+    fun setLiveEntryChannel(pl: String, item: Item) = sp.edit().putString("live_ch_$pl", item.toJson().toString()).apply()
     /** Kumandayla menülerde gezinirken kısa ses çal */
     var navSounds: Boolean get() = bool("nav_sounds", false); set(v) = put("nav_sounds", v)
     /** Görüntü oranı: fit | fill | zoom | "16:9" | "16:10" | "4:3" | "21:9" | "5:4" */
     var aspect: String get() = str("aspect", "fit"); set(v) = put("aspect", v)
+    /** Sunucu EPG vermezse epgshare01 program rehberi kullanılsın */
+    var extEpg: Boolean get() = bool("ext_epg", true); set(v) = put("ext_epg", v)
+    /** Açılışta önceden hazırlanacak EPG ülkeleri (Türkiye her zaman) */
+    var epgCountries: Set<String> get() = sp.getStringSet("epg_countries", emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet("epg_countries", HashSet(v)).apply()
     /** Canlı yayında oynatmaya başlamak için gereken veri (ms): düşük = hızlı kanal açılışı, yüksek = daha az takılma */
     var liveStartMs: Int get() = sp.getInt("live_start_ms", 500); set(v) = sp.edit().putInt("live_start_ms", v).apply()
     /** Önden tamponlanacak en fazla süre (sn). Canlı yayın duraklatılınca bu kadar geriden izlenebilir. */

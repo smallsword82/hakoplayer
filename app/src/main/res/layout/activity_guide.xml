@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Program rehberi: [kategoriler] [kanallar] [seçili kanalın yayın akışı] -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
+    android:background="@color/bg">
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical" android:background="@color/panel"
+        android:paddingLeft="20dp" android:paddingRight="20dp" android:paddingTop="12dp" android:paddingBottom="12dp">
+        <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:text="📅  Program Rehberi" android:textSize="20sp" android:textStyle="bold"
+            android:textColor="@color/text" />
+        <TextView android:id="@+id/tvGuideHint" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="@color/muted" android:textSize="13sp"
+            android:text="OK: kanalı aç   •   Sağ: akışta gez" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:orientation="horizontal">
+        <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvGuideCats"
+            android:layout_width="0dp" android:layout_weight="0.55" android:layout_height="match_parent"
+            android:padding="8dp" android:clipToPadding="false" android:background="@color/panel" />
+        <LinearLayout android:layout_width="0dp" android:layout_weight="0.9" android:layout_height="match_parent"
+            android:orientation="vertical" android:paddingLeft="3dp" android:paddingRight="8dp" android:paddingTop="8dp">
+            <TextView android:id="@+id/tvGuideCat" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:paddingLeft="6dp" android:textSize="16sp" android:textStyle="bold" android:textColor="@color/muted"
+                android:singleLine="true" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvGuideChans"
+                android:layout_width="match_parent" android:layout_height="match_parent"
+                android:layout_marginTop="6dp" android:clipToPadding="false" android:paddingBottom="8dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1.55" android:layout_height="match_parent"
+            android:orientation="vertical" android:background="@color/panel" android:padding="14dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <ImageView android:id="@+id/ivGuideLogo" android:layout_width="64dp" android:layout_height="40dp"
+                    android:scaleType="fitCenter" />
+                <TextView android:id="@+id/tvGuideName" android:layout_width="0dp" android:layout_weight="1"
+                    android:layout_height="wrap_content" android:layout_marginLeft="10dp" android:textSize="20sp"
+                    android:textStyle="bold" android:textColor="@color/text" android:singleLine="true"
+                    android:ellipsize="end" />
+            </LinearLayout>
+            <TextView android:id="@+id/tvGuideEmpty" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="16dp" android:textColor="@color/muted" android:textSize="15sp"
+                android:visibility="gone" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvGuideProgs"
+                android:layout_width="match_parent" android:layout_height="match_parent"
+                android:layout_marginTop="10dp" android:clipToPadding="false" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
