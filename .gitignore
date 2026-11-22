@@ -7,3 +7,5 @@ app/build/
 *.apk
 keystore.properties
 *.keystore
+
+!update/HakoPlayer.apk

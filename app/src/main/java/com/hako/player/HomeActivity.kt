@@ -176,7 +176,12 @@ class HomeActivity : AppCompatActivity() {
             }.also { if (adopt != null) it.run() else rvItems.postDelayed(it, 700) }
         } else if (!resumeLive) Players.take(null) // kullanılmayan devredilmiş oynatıcıyı bırak
         // Favori yıldızları / son izlenenler güncel olsun
-        if (section == Section.FAV || section == Section.RECENT) showSection(section)
+        if (section == Section.FAV || section == Section.RECENT) {
+            // Liste yenilenir ama seçili kategori (ör. TR-HABER) korunur
+            val keep = currentCat?.id
+            showSection(section)
+            catAdapter.items.firstOrNull { it.id == keep }?.let { selectCategory(it) }
+        }
         else rvItems.adapter?.let { it.notifyItemRangeChanged(0, it.itemCount) }
     }
 
@@ -236,7 +241,14 @@ class HomeActivity : AppCompatActivity() {
 
     // ---------- Canlı TV önizleme ----------
 
+    /** Önizlemede yayın oynarken cihaz uyku moduna geçmesin (Fire TV ~20 dk tuşa basılmazsa uyur) */
+    private fun keepAwake(on: Boolean) {
+        if (on) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
     private val previewListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) = keepAwake(isPlaying)
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_READY) {
                 previewRetries = 0
@@ -269,6 +281,7 @@ class HomeActivity : AppCompatActivity() {
             pv.player = p
             p.addListener(previewListener)
             previewPlayer = p
+            keepAwake(p.isPlaying) // devralınan oynatıcı zaten oynuyor olabilir
         }
     }
 
@@ -343,6 +356,7 @@ class HomeActivity : AppCompatActivity() {
         previewPlayer?.let { it.removeListener(previewListener); it.release() }
         previewPlayer = null
         previewView?.player = null
+        keepAwake(false)
     }
 
     /** Önizleme panelini tamamen kapatır (başka bölüme geçince) */
@@ -367,6 +381,7 @@ class HomeActivity : AppCompatActivity() {
             p.removeListener(previewListener)
             previewView?.player = null
             previewPlayer = null
+            keepAwake(false)
             Players.give(p)
         } else releasePreview() // tek bağlantı hakkı olan hesaplar için önizlemeyi önce kapat
         val q = shown.filter { it.kind == item.kind && it.url != null }
@@ -395,9 +410,9 @@ class HomeActivity : AppCompatActivity() {
         val grid = sec == Section.MOVIE || sec == Section.SERIES
         val landscape = resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT
         // Yatay düzen: film/dizide kategori kolonu dar, afişlere daha çok yer kalsın
-        val catWeight = if (sec == Section.LIVE) 0.58f else 0.36f
-        // Favoriler / Son İzlenenler'de kategori yok (yalnızca "Tümü"): sol kolon gizlenir
-        rvCats.visibility = if (sec == Section.FAV || sec == Section.RECENT) View.GONE else View.VISIBLE
+        val catWeight = if (sec == Section.LIVE || sec == Section.RECENT) 0.58f else 0.36f
+        // Favoriler'de kategori yok (yalnızca "Tümü"): sol kolon gizlenir. Son İzlenen kategorilere ayrılır.
+        rvCats.visibility = if (sec == Section.FAV) View.GONE else View.VISIBLE
         val listWeight = if (sec == Section.LIVE) 0.92f else 0.85f
         if (landscape) (rvCats.layoutParams as? android.widget.LinearLayout.LayoutParams)?.let { lp ->
             if (lp.weight != catWeight) { lp.weight = catWeight; rvCats.layoutParams = lp }
@@ -419,9 +434,21 @@ class HomeActivity : AppCompatActivity() {
             val hidden = Settings.hiddenCats(pl.id)
             allItems = (if (sec == Section.FAV) store.favorites(pl.id) else store.recents(pl.id))
                 .filter { !Parental.isItemInHiddenCat(pl.id, it, hidden) }
-            byCat = emptyMap()
             sectionCats = emptyList(); lockedIds = emptySet()
-            catAdapter.items = listOf(Category("*", "Tümü", allItems.size))
+            if (sec == Section.RECENT) {
+                // Son İzlenen: Tümü + Canlı TV / Filmler / Diziler (her biri ayrı, son 10 kayıt)
+                val visible = if (Parental.unlocked) allItems else allItems.filter { !Parental.isItemLocked(pl.id, it) }
+                val groups = LinkedHashMap<String, Pair<String, List<Item>>>()
+                val kinds = listOf(Kind.LIVE to "📺  Canlı TV", Kind.MOVIE to "🎬  Filmler", Kind.SERIES to "🎞  Diziler")
+                for ((k, label) in kinds) visible.filter { it.kind == k || (k == Kind.SERIES && it.kind == Kind.EPISODE) }
+                    .takeIf { it.isNotEmpty() }?.let { groups["k:${k.name}"] = label to it }
+                byCat = groups.mapValues { it.value.second }
+                catAdapter.items = listOf(Category("*", "Tümü", visible.size)) +
+                    groups.map { (id, v) -> Category(id, v.first, v.second.size) }
+            } else {
+                byCat = emptyMap()
+                catAdapter.items = listOf(Category("*", "Tümü", allItems.size))
+            }
             selectCategory(catAdapter.items[0])
             return
         }
@@ -540,7 +567,7 @@ class HomeActivity : AppCompatActivity() {
         currentCat = c
         catAdapter.selectedId = c.id
         applyFilter()
-        if (section != Section.FAV && section != Section.RECENT) tvTitle.text = c.name
+        if (section != Section.FAV) tvTitle.text = if (section == Section.RECENT && c.id == "*") "Son İzlenenler" else c.name
     }
 
     /** Canlı TV açıldıktan sonra Film ve Dizi listelerini arka planda hazırla (sekme geçişi anında olsun) */

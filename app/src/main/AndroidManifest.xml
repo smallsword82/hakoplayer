@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Kendini güncelleme: indirilen yeni sürümü kurmak için -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Hem telefon hem Android TV / Box -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -46,5 +48,6 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/PlayerTheme" />
+        <receiver android:name=".Updater$Receiver" android:exported="false" />
     </application>
 </manifest>

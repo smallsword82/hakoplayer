@@ -76,6 +76,8 @@ object Settings {
     var aspect: String get() = str("aspect", "fit"); set(v) = put("aspect", v)
     /** Sunucu EPG vermezse epgshare01 program rehberi kullanılsın */
     var extEpg: Boolean get() = bool("ext_epg", true); set(v) = put("ext_epg", v)
+    /** Açılışta yeni sürüm var mı diye bakılsın */
+    var autoUpdate: Boolean get() = bool("auto_update", true); set(v) = put("auto_update", v)
     /** Açılışta önceden hazırlanacak EPG ülkeleri (Türkiye her zaman) */
     var epgCountries: Set<String> get() = sp.getStringSet("epg_countries", emptySet()) ?: emptySet()
         set(v) = sp.edit().putStringSet("epg_countries", HashSet(v)).apply()

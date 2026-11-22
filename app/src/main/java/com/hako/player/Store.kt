@@ -68,10 +68,16 @@ class Store(ctx: Context) {
     }
 
     /** Yetişkin içerik son izlenenlerde hiç görünmez (eski sürümlerden kalan kayıtlar da süzülür) */
-    fun recents(pl: String): List<Item> = arr("recent_$pl").map { Item.from(it) }.filter { !Parental.isAdultItem(it) }
+    fun recents(pl: String): List<Item> = limitRecents(arr("recent_$pl").map { Item.from(it) }.filter { !Parental.isAdultItem(it) })
+
+    /** Canlı TV, film ve dizi için ayrı ayrı son 10 kayıt (kanal değiştirmek film/dizi geçmişini silmesin) */
+    private fun limitRecents(list: List<Item>): List<Item> {
+        val per = HashMap<String, Int>()
+        return list.filter { val k = if (it.kind == Kind.EPISODE) Kind.SERIES.name else it.kind.name; val n = (per[k] ?: 0) + 1; per[k] = n; n <= 10 }
+    }
     fun addRecent(pl: String, item: Item) {
         if (Parental.isAdultItem(item)) return
-        val next = (listOf(item) + recents(pl).filter { it.key != item.key }).take(40)
+        val next = limitRecents(listOf(item) + recents(pl).filter { it.key != item.key })
         sp.edit().putString("recent_$pl", Crypto.encrypt(JSONArray(next.map { it.toJson() }).toString())).apply()
     }
 

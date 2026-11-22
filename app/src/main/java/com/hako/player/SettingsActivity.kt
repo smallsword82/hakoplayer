@@ -172,6 +172,8 @@ class SettingsActivity : AppCompatActivity() {
         header("Hakkında")
         val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "?" }
         row("Sürüm", { "HakoPlayer $ver" }) {}
+        row("Güncellemeleri denetle", { "Yeni sürüm varsa indirip kurar" }) { Updater.check(this, manual = true) }
+        toggle("Açılışta güncelleme denetle", { Settings.autoUpdate }) { Settings.autoUpdate = it }
         row("Cihaz", { "${Build.MANUFACTURER} ${Build.MODEL} • Android ${Build.VERSION.RELEASE}" }) {}
         row("Yerel IP", { LocalServer.localIp() ?: "Ağ yok" }) {}
         row("Aktif liste", { Session.playlist?.name ?: "—" }) {}
