@@ -109,11 +109,27 @@ object Updater {
             } catch (_: Exception) { false }
             if (!ok) { busy = false; dlg.dismiss(); toast(act, "İndirme başarısız, sonra tekrar deneyin"); return@launch }
             tv.text = "Kuruluyor…"
-            try { withContext(Dispatchers.IO) { install(act, file) } }
-            catch (e: Exception) { toast(act, "Kurulum başlatılamadı: ${e.message}") }
+            try { installWithOpenButton(act, file) }
+            catch (_: Exception) {
+                // Klasik kurulum ekranı yoksa oturumlu kurulum (bittikten sonra uygulamayı elle açmak gerekir)
+                try { withContext(Dispatchers.IO) { install(act, file) } }
+                catch (e: Exception) { toast(act, "Kurulum başlatılamadı: ${e.message}") }
+            }
             busy = false
             dlg.dismiss()
         }
+    }
+
+    /**
+     * Android'in klasik kurulum ekranı: kurulum bitince "AÇ" düğmesi çıkar, yeni sürüm tek tuşla başlar.
+     * (Android 10+ güncellenen uygulamanın kendini arka plandan yeniden başlatmasına izin vermiyor.)
+     */
+    @Suppress("DEPRECATION")
+    private fun installWithOpenButton(act: AppCompatActivity, apk: File) {
+        val uri = androidx.core.content.FileProvider.getUriForFile(act, act.packageName + ".files", apk)
+        act.startActivity(Intent(Intent.ACTION_INSTALL_PACKAGE).setData(uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true))
     }
 
     /** Android'in paket yükleyicisine verir; onay ekranını [Receiver] açar */
