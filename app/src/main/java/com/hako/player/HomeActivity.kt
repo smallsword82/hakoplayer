@@ -12,6 +12,7 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.PlaybackException
@@ -113,6 +114,7 @@ class HomeActivity : AppCompatActivity() {
         navIds.forEach { (sec, id) -> findViewById<View>(id).setOnClickListener { showSection(sec) } }
         findViewById<View>(R.id.navBack).setOnClickListener { finish() } // ana sayfaya dön
         findViewById<View>(R.id.navGuide).setOnClickListener { openGuide() }
+        findViewById<View>(R.id.navSort).setOnClickListener { pickSort() }
         findViewById<View>(R.id.navReload).setOnClickListener {
             src.clearCache(); showSection(section)
             Toast.makeText(this, "Liste yenileniyor…", Toast.LENGTH_SHORT).show()
@@ -390,6 +392,43 @@ class HomeActivity : AppCompatActivity() {
         startActivity(Intent(this, PlayerActivity::class.java))
     }
 
+    /** Üst bardaki sıralama düğmesi yalnızca Filmler ve Diziler'de görünür, seçili sıralamayı yazar */
+    private fun updateSortTab() {
+        val tab = findViewById<TextView>(R.id.navSort)
+        val on = section == Section.MOVIE || section == Section.SERIES
+        tab.visibility = if (on) View.VISIBLE else View.GONE
+        if (on) tab.text = "⇅ " + when (Settings.sortOf(kindOf(section))) {
+            "rating" -> "Puan"; "added" -> "Yeni"; "az" -> "A-Z"; "za" -> "Z-A"; else -> "Sırala"
+        }
+    }
+
+    /** Sıralama seçimi: liste yeniden indirilmez, açık kategori korunur */
+    private fun pickSort() {
+        if (section != Section.MOVIE && section != Section.SERIES) return
+        val kind = kindOf(section)
+        val cur = Settings.sortOf(kind)
+        val opts = Sorts.options
+        AlertDialog.Builder(this).setTitle(if (kind == Kind.MOVIE) "Filmleri sırala" else "Dizileri sırala")
+            .setSingleChoiceItems(opts.map { it.first }.toTypedArray(), opts.indexOfFirst { it.second == cur }) { d, i ->
+                d.dismiss()
+                val mode = opts[i].second
+                if (mode == cur) return@setSingleChoiceItems
+                Settings.setSort(kind, mode)
+                updateSortTab()
+                val sec = section
+                lifecycleScope.launch {
+                    // "Sunucu sırası" için asıl liste yeniden alınır (önbellekten, hızlı)
+                    val base = if (mode == "server") (Session.source?.items(kind) ?: allItems) else allItems
+                    val sorted = withContext(Dispatchers.Default) { Sorts.apply(base, mode) }
+                    if (section != sec) return@launch
+                    allItems = sorted
+                    byCat = withContext(Dispatchers.Default) { sorted.groupBy { it.categoryId } }
+                    val c = catAdapter.items.firstOrNull { it.id == catAdapter.selectedId } ?: catAdapter.items.firstOrNull()
+                    c?.let { selectCategory(it) }
+                }
+            }.show()
+    }
+
     private fun kindOf(sec: Section) = when (sec) {
         Section.LIVE -> Kind.LIVE; Section.MOVIE -> Kind.MOVIE; else -> Kind.SERIES
     }
@@ -408,6 +447,7 @@ class HomeActivity : AppCompatActivity() {
         }
 
         val grid = sec == Section.MOVIE || sec == Section.SERIES
+        updateSortTab()
         val landscape = resources.configuration.orientation != Configuration.ORIENTATION_PORTRAIT
         // Yatay düzen: film/dizide kategori kolonu dar, afişlere daha çok yer kalsın
         val catWeight = if (sec == Section.LIVE || sec == Section.RECENT) 0.58f else 0.36f
@@ -460,7 +500,10 @@ class HomeActivity : AppCompatActivity() {
             try {
                 val kind = kindOf(sec)
                 val raw = src.items(kind)
-                val items = if (Settings.sortAz) withContext(Dispatchers.Default) { raw.sortedBy { it.name.lowercase() } } else raw
+                val items = withContext(Dispatchers.Default) {
+                    if (kind == Kind.LIVE) { if (Settings.sortAz) raw.sortedBy { it.name.lowercase() } else raw }
+                    else Sorts.apply(raw, Settings.sortOf(kind))
+                }
                 val allCats = src.categories(kind)
                 Session.rememberCats(kind, allCats)
                 val cats = allCats.filter { it.id == "*" || it.count > 0 }

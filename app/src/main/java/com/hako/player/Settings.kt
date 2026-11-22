@@ -90,6 +90,9 @@ object Settings {
     var clock24: Boolean get() = bool("clock24", true); set(v) = put("clock24", v)
     /** Kanal/film sıralaması: false = sunucu sırası, true = A-Z */
     var sortAz: Boolean get() = bool("sort_az", false); set(v) = put("sort_az", v)
+    /** Film ve dizi listelerinin sıralaması (bkz. [Sorts]); seçilmemişse eski A-Z ayarı geçerli */
+    fun sortOf(k: Kind): String = sp.getString("sort_${k.name}", null) ?: if (sortAz) "az" else "server"
+    fun setSort(k: Kind, mode: String) = sp.edit().putString("sort_${k.name}", mode).apply()
     /** Liste önbellek süresi (saat). 0 = her açılışta güncelle */
     var cacheHours: Int get() = sp.getInt("cache_hours", 6); set(v) = sp.edit().putInt("cache_hours", v).apply()
     var userAgent: String get() = str("user_agent", ""); set(v) = put("user_agent", v)

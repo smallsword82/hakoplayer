@@ -254,16 +254,18 @@ class XtreamSource(private val p: Playlist) : Source {
                             adult = isAdultFlag(f["is_adult"]),
                             archive = if (f["tv_archive"] == "1") (f["tv_archive_duration"]?.toIntOrNull() ?: 1).coerceAtLeast(1) else 0)
                     }
-                    Kind.MOVIE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "container_extension", "rating", "is_adult")) { f, i ->
+                    Kind.MOVIE -> readObjectArray(inp, setOf("stream_id", "name", "stream_icon", "category_id", "container_extension", "rating", "is_adult", "added")) { f, i ->
                         val id = f["stream_id"].orEmpty()
                         val e = f["container_extension"].orNull() ?: "mp4"
                         Item(id, f["name"].orEmpty(), f["stream_icon"].orNull(), f["category_id"].orEmpty(), Kind.MOVIE,
                             "$base/movie/$user/$pass/$id.$e", num = i + 1,
-                            extra = f["rating"]?.takeIf { it.isNotBlank() && it != "0" }, adult = isAdultFlag(f["is_adult"]))
+                            extra = f["rating"]?.takeIf { it.isNotBlank() && it != "0" }, adult = isAdultFlag(f["is_adult"]),
+                            added = f["added"]?.toLongOrNull() ?: 0)
                     }
-                    else -> readObjectArray(inp, setOf("series_id", "name", "cover", "category_id", "rating")) { f, i ->
+                    else -> readObjectArray(inp, setOf("series_id", "name", "cover", "category_id", "rating", "last_modified")) { f, i ->
                         Item(f["series_id"].orEmpty(), f["name"].orEmpty(), f["cover"].orNull(), f["category_id"].orEmpty(),
-                            Kind.SERIES, null, num = i + 1, extra = f["rating"]?.takeIf { it.isNotBlank() && it != "0" })
+                            Kind.SERIES, null, num = i + 1, extra = f["rating"]?.takeIf { it.isNotBlank() && it != "0" },
+                            added = f["last_modified"]?.toLongOrNull() ?: 0)
                     }
                 }
             }

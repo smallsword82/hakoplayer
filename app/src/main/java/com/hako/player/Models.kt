@@ -39,20 +39,44 @@ data class Item(
     val extra: String? = null, // puan / yıl vb.
     val adult: Boolean = false, // sunucu "is_adult" işareti
     val archive: Int = 0,       // geri izleme (catch-up) gün sayısı; 0 = yok
+    val added: Long = 0,        // sunucuya eklenme zamanı (unix sn); film: added, dizi: last_modified
 ) {
     val key: String = "${kind.name}:$id"
+    /** Sıralama için sayısal puan (yoksa -1) */
+    val ratingValue: Double get() = extra?.replace(',', '.')?.toDoubleOrNull() ?: -1.0
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("name", name).put("logo", logo).put("cat", categoryId)
         .put("kind", kind.name).put("url", url).put("epg", epgId).put("num", num).put("extra", extra).put("adult", adult).put("arc", archive)
+        .put("add", added)
 
     companion object {
         fun from(o: JSONObject) = Item(
             o.getString("id"), o.optString("name"), o.optString("logo").ifEmpty { null },
             o.optString("cat"), Kind.valueOf(o.optString("kind", "LIVE")),
             o.optString("url").ifEmpty { null }, o.optString("epg").ifEmpty { null },
-            o.optInt("num"), o.optString("extra").ifEmpty { null }, o.optBoolean("adult"), o.optInt("arc"),
+            o.optInt("num"), o.optString("extra").ifEmpty { null }, o.optBoolean("adult"), o.optInt("arc"), o.optLong("add"),
         )
+    }
+}
+
+/** Film/dizi listesi sıralaması: "server" | "rating" | "added" | "az" | "za" */
+object Sorts {
+    val options = listOf("Sunucu sırası" to "server", "★ Puana göre" to "rating", "🆕 Eklenme tarihine göre" to "added",
+        "A'dan Z'ye" to "az", "Z'den A'ya" to "za")
+
+    fun label(mode: String) = options.firstOrNull { it.second == mode }?.first ?: "Sunucu sırası"
+
+    fun apply(list: List<Item>, mode: String): List<Item> {
+        val tr = java.text.Collator.getInstance(java.util.Locale("tr")).apply { strength = java.text.Collator.PRIMARY }
+        val byName = Comparator<Item> { a, b -> tr.compare(a.name, b.name) }
+        return when (mode) {
+            "rating" -> list.sortedWith(compareByDescending<Item> { it.ratingValue }.then(byName))
+            "added" -> list.sortedByDescending { it.added } // eşitlerde sunucu sırası korunur
+            "az" -> list.sortedWith(byName)
+            "za" -> list.sortedWith(byName.reversed())
+            else -> list
+        }
     }
 }
 

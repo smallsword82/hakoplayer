@@ -34,6 +34,16 @@ object Updater {
     private var autoChecked = false
     private var busy = false
 
+    /**
+     * Açılışta: önceki güncellemeden kalan kurulum dosyası ve yarım kalmış kurulum oturumları silinir
+     * (eski sürümün kendisini Android güncelleme sırasında zaten kaldırır). Depolama şişmez.
+     */
+    fun cleanup(ctx: Context) {
+        ctx.cacheDir.listFiles()?.filter { it.name.startsWith("update") && it.name.endsWith(".apk") }?.forEach { it.delete() }
+        val pi = ctx.packageManager.packageInstaller
+        pi.mySessions.forEach { s -> try { pi.abandonSession(s.sessionId) } catch (_: Exception) { } }
+    }
+
     private fun currentCode(ctx: Context): Long {
         val pi = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
         @Suppress("DEPRECATION")
