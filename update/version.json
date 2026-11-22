@@ -1,6 +1,6 @@
 {
-  "versionCode": 17,
-  "versionName": "2.3.6",
+  "versionCode": 18,
+  "versionName": "2.3.7",
   "apk": "HakoPlayer.apk",
-  "notes": "• Filmler ve Diziler: ⇅ Sırala düğmesi (puan, eklenme tarihi, A-Z, Z-A)\n• Güncelleme sonrası kurulum dosyaları otomatik silinir, depolama şişmez"
+  "notes": "• Ayarlar yeni tasarım: solda bölümler, sağda ayarlar — uzun kaydırma yok"
 }

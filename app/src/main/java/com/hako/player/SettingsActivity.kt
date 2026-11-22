@@ -18,20 +18,69 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class SettingsActivity : AppCompatActivity() {
-    private lateinit var list: LinearLayout
-    /** Satır yenilemek için: değer metnini döndüren fonksiyonlar */
+    private lateinit var list: LinearLayout          // sağ sütun: seçili bölümün satırları
+    private lateinit var sectionBar: LinearLayout    // sol sütun: bölüm başlıkları
+    private lateinit var listScroll: android.widget.ScrollView
+    /** Satır yenilemek için: değer metnini döndüren fonksiyonlar (yalnızca görünen bölümdekiler) */
     private val refreshers = mutableListOf<() -> Unit>()
+    /** Bölümler: başlık → o bölümün satırlarını [list]'e ekleyen işlev */
+    private val sections = mutableListOf<Pair<String, () -> Unit>>()
+    private var selected = -1
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         setContentView(R.layout.activity_settings)
         list = findViewById(R.id.list)
-        build()
-        list.getChildAt(2)?.requestFocus()
+        sectionBar = findViewById(R.id.sections)
+        listScroll = findViewById(R.id.listScroll)
+        buildSections()
+        renderSectionBar()
+        showSection(0)
+        sectionBar.getChildAt(0)?.requestFocus()
     }
 
-    private fun build() {
-        header("Genel")
+    /** Her bölüm bir sol sekme olur; sekmeye gelince sağ sütun o bölümün ayarlarıyla yenilenir */
+    private fun buildSections() {
+        sections.clear()
+        sections += "Genel" to { sectionGeneral() }
+        sections += "Program Rehberi" to { sectionEpg() }
+        sections += "Oynatıcı" to { sectionPlayer() }
+        sections += "Liste" to { sectionList() }
+        sections += "Ebeveyn Kontrolü" to { sectionParental() }
+        sections += "Hakkında" to { sectionAbout() }
+    }
+
+    private fun renderSectionBar() {
+        sectionBar.removeAllViews()
+        sections.forEachIndexed { i, (title, _) ->
+            val tab = TextView(this).apply {
+                text = title; textSize = 17f
+                setBackgroundResource(R.drawable.bg_item)
+                isFocusable = true; isClickable = true
+                setPadding(26, 24, 20, 24)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = 4 }
+                // Kumandayla üstünde gezinince o bölüm açılır; sağ/OK ile ayarlara geçilir
+                setOnFocusChangeListener { _, has -> if (has) showSection(i) }
+                setOnClickListener { showSection(i); list.getChildAt(0)?.requestFocus() }
+            }
+            sectionBar.addView(tab)
+        }
+    }
+
+    private fun showSection(i: Int) {
+        if (i == selected) return
+        selected = i
+        for (j in 0 until sectionBar.childCount) sectionBar.getChildAt(j).isSelected = j == i
+        refreshers.clear()
+        list.removeAllViews()
+        sections[i].second()
+        listScroll.scrollTo(0, 0)
+    }
+
+    // ---------------- Bölümler ----------------
+
+    private fun sectionGeneral() {
         toggle("Açılışta son listeyi otomatik yükle", { Settings.autoLoad }) { Settings.autoLoad = it }
         row("Açılışta oynat", {
             when (Settings.startMode) {
@@ -81,8 +130,9 @@ class SettingsActivity : AppCompatActivity() {
         choice("Kanal sıralaması",listOf("Sunucu sırası" to false, "A'dan Z'ye" to true), { Settings.sortAz }) {
             Settings.sortAz = it
         }
+    }
 
-        header("Program rehberi (EPG)")
+    private fun sectionEpg() {
         toggle("Sunucu EPG vermezse harici rehberi kullan (epgshare01)", { Settings.extEpg }) { Settings.extEpg = it }
         row("EPG ülkeleri", {
             val sel = Settings.epgCountries
@@ -102,8 +152,9 @@ class SettingsActivity : AppCompatActivity() {
                 .setPositiveButton("Tamam") { _, _ -> Settings.epgCountries = sel; refresh() }
                 .setNegativeButton("Vazgeç", null).show()
         }
+    }
 
-        header("Oynatıcı")
+    private fun sectionPlayer() {
         choice("Canlı yayın formatı", listOf("Otomatik" to "auto", "MPEG-TS (.ts)" to "ts", "HLS (.m3u8)" to "m3u8"),
             { Settings.liveFormat }) {
             Settings.liveFormat = it
@@ -126,8 +177,9 @@ class SettingsActivity : AppCompatActivity() {
                 .setNeutralButton("Varsayılan") { _, _ -> Settings.userAgent = ""; refresh() }
                 .setNegativeButton("Vazgeç", null).show()
         }
+    }
 
-        header("Liste")
+    private fun sectionList() {
         choice("Liste güncelleme sıklığı",
             listOf("Her açılışta" to 0, "6 saatte bir" to 6, "12 saatte bir" to 12, "Günde bir" to 24, "Haftada bir" to 168),
             { Settings.cacheHours }) { Settings.cacheHours = it }
@@ -142,8 +194,9 @@ class SettingsActivity : AppCompatActivity() {
                 Toast.makeText(this@SettingsActivity, "Önbellek temizlendi", Toast.LENGTH_SHORT).show()
             }
         }
+    }
 
-        header("Ebeveyn Kontrolü")
+    private fun sectionParental() {
         row("Kategori kilitle", { lockSummary() }) { requirePin { pickLockedCategories() } }
         row("Kategori gizle", { hideSummary() }) { requirePin { pickHiddenCategories() } }
         row("Yetişkin içerik (otomatik)", {
@@ -168,8 +221,9 @@ class SettingsActivity : AppCompatActivity() {
             Parental.unlocked = false; refresh()
             Toast.makeText(this, "Kilitli içerik tekrar gizlendi", Toast.LENGTH_SHORT).show()
         }
+    }
 
-        header("Hakkında")
+    private fun sectionAbout() {
         val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "?" }
         row("Sürüm", { "HakoPlayer $ver" }) {}
         row("Güncellemeleri denetle", { "Yeni sürüm varsa indirip kurar" }) { Updater.check(this, manual = true) }
@@ -260,14 +314,6 @@ class SettingsActivity : AppCompatActivity() {
     /* ---------------- Satır yardımcıları ---------------- */
 
     private fun refresh() = refreshers.forEach { it() }
-
-    private fun header(t: String) {
-        list.addView(TextView(this).apply {
-            text = t.uppercase(); textSize = 13f
-            setTextColor(ContextCompat.getColor(context, R.color.accent))
-            setPadding(8, 36, 8, 8)
-        })
-    }
 
     private fun row(title: String, value: () -> String, onClick: () -> Unit) {
         val r = LinearLayout(this).apply {

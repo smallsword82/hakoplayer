@@ -1,10 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent">
-    <LinearLayout android:id="@+id/list" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="vertical" android:paddingLeft="48dp" android:paddingRight="48dp"
-        android:paddingTop="24dp" android:paddingBottom="24dp">
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="⚙  Ayarlar" android:textSize="26sp" android:textStyle="bold" android:layout_marginBottom="8dp" />
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingLeft="40dp" android:paddingRight="40dp" android:paddingTop="22dp" android:paddingBottom="22dp">
+
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="⚙  Ayarlar" android:textSize="24sp" android:textStyle="bold"
+        android:paddingLeft="8dp" android:layout_marginBottom="14dp" />
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <!-- Sol: bölümler -->
+        <ScrollView android:layout_width="0dp" android:layout_weight="0.34" android:layout_height="match_parent"
+            android:scrollbars="none" android:paddingRight="12dp">
+            <LinearLayout android:id="@+id/sections" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical" />
+        </ScrollView>
+
+        <!-- Sağ: seçili bölümün ayarları -->
+        <ScrollView android:id="@+id/listScroll" android:layout_width="0dp" android:layout_weight="0.66"
+            android:layout_height="match_parent" android:paddingLeft="16dp">
+            <LinearLayout android:id="@+id/list" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="vertical" android:paddingBottom="24dp" />
+        </ScrollView>
     </LinearLayout>
-</ScrollView>
+</LinearLayout>
